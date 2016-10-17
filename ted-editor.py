@@ -796,11 +796,11 @@ class CurveRails:
 
     self.types, self.uuids, self.content = raildefs.getRailDict("rd/andalusia.raildef")
     
-    print("railtypes")
-    for rt,uuids in self.types.items():
-      print(rt,raildefs.RailType(rt),uuids)
-      for u in uuids:
-        print(self.uuids[u])
+    #print("railtypes")
+    #for rt,uuids in self.types.items():
+    #  print(rt,raildefs.RailType(rt),uuids)
+    #  for u in uuids:
+    #    print(self.uuids[u])
     
     self.setup()
   def getName(self,ri):
@@ -1214,8 +1214,11 @@ class CCManip(FSM):
             self.jointimap[seg].append(cids)
           else:
             self.jointimap[seg] = [cids]
-    #self.canvas.tag_lower(self.segtag)
     self.canvas.tag_raise(self.segtag,"contour")
+    try:
+      self.canvas.tag_raise(self.segtag,"image")
+    except:
+      pass
 
     self.canvas.itemconfigure(self.lengthdisplay,
                               text="Length: {:.2f}m".format(self.cc.length()))
@@ -1957,61 +1960,18 @@ class App(tk.Frame):
     self.imgcid = None
   def importImg(self):
     pass
-    # path = self.askOpenFileName()
+    path = self.askOpenFileName()
 
-    # from skimage import measure
-    # import numpy as np
-
-    # try:
-    #   with open(path, mode='rb') as file:
-    #     raw = file.read()
-    #     dt = np.dtype("uint16")
-    #     dt = dt.newbyteorder('>')
-    #     img = np.fromfile(path,dtype=dt)
-    #     img = np.reshape(img,(1024,1024))
-    #     mi,ma = float(np.amin(img)),float(np.amax(img))
-    #     print("contour",mi,ma)
-    #     for i in range(50):
-    #       d = float(mi*(1-i/50)+ma*i/50)
-    #       print("contour",d)
-    #       npc = measure.find_contours(img, d)
-    #       for n,c in enumerate(npc):
-    #         contours = [((x[1]-512)/1024*3499.99975586*2,(x[0]-512)/1024*3499.99975586*2) for x in c]
-    #         if la.norm(c[-1] - c[0]) < 0.01:
-    #           self.canvas.create_polygon(contours,fill="",outline='red',tag="contour")
-    #         else:
-    #           self.canvas.create_line(contours,fill='green',tag="contour")
-    # except FileNotFoundError:
-    #   print("file not found!")
-    #   return
-    # try:
-    #   self.img = Image.open(path)
-    # except:
-    #   try:
-    #     with open(path, mode='rb') as file:
-    #       raw = file.read()
-    #       self.img = Image.frombytes("F",(1024,1024),raw,"raw","F;16")
-          
-    #       print(self.img.getpixel((4,4)))
-    #       f = 1.0 / 2**8
-    #       self.img = self.img.point(lambda x: x * f)
-    #       print(self.img.getpixel((4,4)))
-          
-    #       self.img = self.img.resize((8192,8192))
-    #       self.img = self.img.filter(ImageFilter.CONTOUR)
-    #   except FileNotFoundError:
-    #     print("file not found!")
-    #     return
-      
-    # self.ix =2*3499.99975586
-    # f = self.ix/2049.0
-    # print (f)
-    # #self.img = self.img.transform((int(self.ix),int(self.ix)),Image.AFFINE,data=(f,0,0,0,f,0))
-    # self.img = self.img.resize((int(self.ix),int(self.ix)))
-      
-    # self.simg = self.img
-    # self.pimg = ImageTk.PhotoImage(self.img)
-    # self.imgcid = self.canvas.create_image(-2048, -2048, image=self.pimg, anchor=tk.NW)
+    try:
+      self.img = Image.open(path)
+    except FileNotFoundError:
+      print("file not found!")
+      return
+    
+    self.simg = self.img
+    self.pimg = ImageTk.PhotoImage(self.img)
+    self.imgcid = self.canvas.create_image(0,0, image=self.pimg, anchor = tk.NW, tag="image")
+    self.canvas.tag_lower("image","segment")
 
   def setup(self):
     # create a toplevel menu
@@ -2054,14 +2014,12 @@ class App(tk.Frame):
     self.canvas.focus_set()
     self.drawCoordGrid()
 
-    self.img = None #Image.open("pau.png")
-    self.simg = None #self.img
-    self.pimg = None #ImageTk.PhotoImage(self.img)
+    self.img = None
+    self.simg = None
+    self.pimg = None
 
-    self.imgcid = None#self.canvas.create_image(0, 0, image=self.pimg, anchor=tk.NW)
-    #self.canvas.tag_lower(self.imgcid)
-
-
+    self.imgcid = None
+    
     import re
     self.contours = np.load("hm/andalusia-contours.npz")
     for a in self.contours.files:
@@ -2086,20 +2044,30 @@ class App(tk.Frame):
 
     self.cc = ControlCurve()
 
-    # self.cc.appendPoint(la.coords(100,100))
-    # self.cc.appendPoint(la.coords(200,110))
-    # self.cc.appendPoint(la.coords(320,310),SegType.Biarc)
-    # self.cc.appendPoint(la.coords(520,400),SegType.Biarc)
+    # initial simple track
 
-    c,s,_ = self.cc.appendPoint(la.coords(100,100))
-    c,s,_ = self.cc.appendPoint(la.coords(100,200))
-    c,s,_ = self.cc.appendPoint(la.coords(300,200),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(500,200),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(700,100),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(900,0),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(600,0),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(600,-100),  SegType.Biarc)
-    c,s,_ = self.cc.appendPoint(la.coords(400,0),  SegType.Biarc)
+    #self.cc.appendPoint(la.coords(100,100))
+    #self.cc.appendPoint(la.coords(700,100))
+
+    
+    self.cc.appendPoint(la.coords(100,200))
+    self.cc.appendPoint(la.coords(100,300))
+    self.cc.appendPoint(la.coords(200,450),SegType.Biarc)
+    self.cc.appendPoint(la.coords(600,450))
+    self.cc.appendPoint(la.coords(700,300),SegType.Biarc)
+    self.cc.appendPoint(la.coords(600,200),SegType.Biarc)
+    self.cc.appendPoint(la.coords(400,300))
+
+    
+    # c,s,_ = self.cc.appendPoint(la.coords(100,100))
+    # c,s,_ = self.cc.appendPoint(la.coords(600,100))
+    # c,s,_ = self.cc.appendPoint(la.coords(300,200),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(500,200),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(700,100),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(900,0),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(600,0),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(600,-100),  SegType.Biarc)
+    # c,s,_ = self.cc.appendPoint(la.coords(400,0),  SegType.Biarc)
 
     #c,s2,_ = self.cc.insertPoint(s,la.coords(100,200),SegType.Biarc)
     #cp,s,_ = self.cc.insertPoint(s,la.coords(220,210),SegType.Biarc)
@@ -2113,7 +2081,6 @@ class App(tk.Frame):
     #  self.cc.appendPoint(la.coords(25*131-int(i/2)*131,200+(i%2)*73), SegType.Biarc)
 
     self.cc.toggleOpen()
-
     
     self.ccmanip   = CCManip(self.cc,self.canvas)
     self.railmanip = RailManip(self.cc,self.canvas)
@@ -2151,12 +2118,12 @@ class App(tk.Frame):
     #print("Motion",ev.x,ev.y,ev.state)
     sys.stdout.flush()
     if self.imgcid:
-      self.canvas.tag_lower(self.imgcid)
+      self.canvas.tag_lower(self.imgcid,"segment")
     if (self.dragging):
       self.canvas.scan_dragto(ev.x,ev.y,1)
 
   def onWheel(self, ev):
-    print("Wheel",ev.delta,ev.state)
+    #  print("Wheel",ev.delta,ev.state)
     sys.stdout.flush()
     cx,cy = self.canvas.canvasxy(ev.x,ev.y)
 
@@ -2166,34 +2133,20 @@ class App(tk.Frame):
     # scale all objects on canvas
     self.canvas.zoom(cx, cy, sf)
 
-    # if self.img:
-    #   imgsc = tuple(int(sf * c) for c in  self.simg.size)
-    #   ox,oy = self.canvas.canvasxy(0,0)
-    #   cw,ch = self.canvas.winfo_reqwidth(),self.canvas.winfo_reqheight()
-    #   cow,coh = self.canvas.canvasxy(cw,ch)
+    if self.img:
+      ox,oy = self.canvas.canvasxy(0,0) # canvas coordinate of image origin
+      cw,ch = self.canvas.winfo_reqwidth(),self.canvas.winfo_reqheight() # max image width,height
 
-    #   if imgsc[0] > cw and imgsc[1] > ch:
-    #     isz = (cw,ch)
-    #   else:
-    #     isz = imgsc
-        
-    #   xf = self.canvas.xform()
-    #   xf = deepcopy(xf)
+      xf = self.canvas.xform()
+      xf = deepcopy(xf)
+      xf = la.inverse(xf)
+      # scale image contents, max size of cw,ch make sure to not overblow image size
+      self.simg = self.img.transform((cw,ch),Image.AFFINE,data=(xf[0][0],xf[0][1],xf[0][3],xf[1][0],xf[1][1],xf[1][3]))
     
-    #   xf = inverse(xf)
-    #   #self.simg = self.img.transform(self.img.size,Image.AFFINE,data=(xf[0][0],xf[0][1],xf[0][3],xf[1][0],xf[1][1],xf[1][3]))
-    #   self.simg = self.img.transform(imgsc,Image.AFFINE,data=(xf[0][0],0,0,0,xf[1][1],0))
-    
-    #   self.pimg = ImageTk.PhotoImage(self.simg)
-    #   #self.canvas.itemconfig(self.imgcid, image = self.pimg)
-    #   x,y = self.canvas.coords(self.imgcid)
-    #   print(x,y,self.img.size,ox,oy,cow,coh)
-    #   if self.imgcid:
-    #     self.canvas.coords(self.imgcid,-self.ix/2,-self.ix/2)
-    #     self.canvas.itemconfig(self.imgcid, image = self.pimg)
-    #     #self.canvas.delete(self.imgcid)
-    #   #else:
-    #     #self.imgcid = self.canvas.create_image(0, 0, image=self.pimg, anchor=tk.NW)
+      self.pimg = ImageTk.PhotoImage(self.simg)
+      self.canvas.itemconfig(self.imgcid, image = self.pimg) # set new image
+      self.canvas.coords(self.imgcid,ox,oy) # adjust image origin
+      self.canvas.tag_lower(self.imgcid,"segment") # just below segments
     sys.stdout.flush()
 
     
