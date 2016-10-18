@@ -84,7 +84,7 @@ class CanvasX(tk.Canvas):
         self._xform = la.mul(self._xform,la.translate(x,y))
         self._xform = la.mul(self._xform,la.scale(s,s))
         self._xform = la.mul(self._xform,la.translate(-x,-y))
-    
+
         
     def addtag_closest(self, newtag, x, y, halo=None, start=None):
         """Add tag NEWTAG to item which is closest to pixel at X, Y.
@@ -112,7 +112,7 @@ class CanvasX(tk.Canvas):
         if (cbbox):
             x1,y1 = self._c2o(cbbox[0],cbbox[1])
             x2,y2 = self._c2o(cbbox[2],cbbox[3])
-            bbox = tuple(x1,y1,x2,y2)
+            bbox = (x1,y1,x2,y2)
             return bbox
         return None
     def canvasxy(self, screenx, screeny):
