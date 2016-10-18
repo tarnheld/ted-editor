@@ -432,10 +432,19 @@ class ControlCurve:
     self.cids      = {}
 
   def length(self):
+    "total length of control curve"
     tl = 0
     for s in self.segment:
       tl += s.seg.length()
     return tl
+  def lengthsAt(self,seg):
+    "length of control curve up to segment and length of segment"
+    tl = 0
+    for s in self.segment:
+      if s is seg:
+        return tl, s.length()
+      tl += s.seg.length()
+    return tl,0
   def segmentAndTAt(self,l):
     seg = None
     tl = l
@@ -793,8 +802,8 @@ class CurveRails:
   def __init__(self,cc):
     self.cc = cc
     self.rails = []
-
-    self.types, self.uuids, self.content = raildefs.getRailDict("rd/andalusia.raildef")
+    self.railroot = raildefs.getRailRoot("rd/andalusia.raildef")
+    self.types, self.uuids, self.content = raildefs.getRailDict(self.railroot)
     
     #print("railtypes")
     #for rt,uuids in self.types.items():
@@ -1667,12 +1676,14 @@ class App(tk.Frame):
     self.deco    = ted.ted_data_to_tuple_list("decoration",ted.decoration,tedfile,self.hdr.decoration_offset,self.hdr.decoration_count)
 
     #print(self.cps)
-    
+    old_bbox = self.canvas.bbox("segment")
+
     self.cc = ControlCurve()
 
     #skip = -1
     width = self.hdr.road_width
     for i,cp in enumerate(self.cps):
+      prev = self.cps[i-1]
       lx = (self.cps[i-1].x - cp.x)
       ly = (self.cps[i-1].y - cp.y)
       l = m.sqrt(lx*lx + ly*ly)
@@ -1680,8 +1691,14 @@ class App(tk.Frame):
       sys.stdout.flush()
       if (ted.SegType(cp.segtype) == ted.SegType.Straight):
         self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Straight,width)
-      if (ted.SegType(cp.segtype) == ted.SegType.Arc2CCW or
-          ted.SegType(cp.segtype) == ted.SegType.Arc2CW):
+      segarc2  = (ted.SegType(cp.segtype) == ted.SegType.Arc2CCW or
+                  ted.SegType(cp.segtype) == ted.SegType.Arc2CW)
+      prevsegarc1 = (ted.SegType(prev.segtype) == ted.SegType.Arc1CCW or
+                     ted.SegType(cp.segtype) == ted.SegType.Arc1CW)
+      segnearly = ted.SegType(cp.segtype) == ted.SegType.NearlyStraight
+      prevsegnearly = ted.SegType(prev.segtype) == ted.SegType.NearlyStraight
+                 
+      if ( segarc2 or segnearly and(prevsegarc1 or prevsegnearly) ):
 
         p1    = la.coords(self.cps[i-0].x,self.cps[i-0].y)
         joint = la.coords(self.cps[i-1].x,self.cps[i-1].y)
@@ -1689,7 +1706,8 @@ class App(tk.Frame):
 
         biarc_r = la.norm(joint-p0)/(la.norm(joint-p0)+la.norm(joint-p1))
         
-        self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Biarc,width,biarc_r)
+        p,seg,_ = self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Biarc,width,biarc_r)
+        
         dx = (cp.x - cp.center_x)
         dy = (cp.y - cp.center_y)
         
@@ -1701,20 +1719,52 @@ class App(tk.Frame):
           t = la.unit(la.coords(dy,-dx))
         if ted.SegType(cp.segtype) == ted.SegType.Arc2CW:
           t = la.unit(la.coords(-dy,dx))
+        if ted.SegType(cp.segtype) == ted.SegType.NearlyStraight:
+          t = la.unit(la.coords(cp.x-prev.x,cp.y-prev.y))
 
-        
-          self.cc.point[-1].tangent = t
+        self.cc.point[-1].tangent = t
+
+        ba = self.banks[i-1].banking
+        aba = ba /180*m.pi
+        try:
+          tba = m.tan(aba)
+        except:
+          tba = 0
+        print ("banking:",i,r,ba,aba,tba,tba*r)
 
     if self.hdr.is_loop and self.cc.isOpen:
       biarc_r = self.cc.segment[-1].biarc_r
       self.cc.removePoint(self.cc.point[-1])
       self.cc.toggleOpen(width,biarc_r)
 
-      self.ccmanip.cc = self.cc
-      self.ccmanip.redrawSegments()
-      self.ccmanip.addHandles()
-     
-      
+    self.ccmanip.cc = self.cc
+    self.ccmanip.redrawSegments()
+    self.ccmanip.addHandles()
+
+    bbox = self.canvas.bbox("segment")
+
+    ctx,cty = self.canvas.canvasxy(0,0)
+    cbx,cby = self.canvas.canvasxy(self.canvas.winfo_reqwidth(),-self.canvas.winfo_reqheight())
+    print(bbox)
+    print(ctx,cty,cbx,cby)
+    print(abs(ctx-cbx)/abs(bbox[1]-bbox[0]))
+    print(abs(cty-cby)/abs(bbox[3]-bbox[2]))
+    eox = abs(ctx-cbx)
+    eoy = abs(cty-cby)
+    enx = abs(bbox[0]-bbox[2])
+    eny = abs(bbox[1]-bbox[3])
+    aro = eox/eoy
+    arn = enx/eny
+    print(eox,eoy,enx,eny,aro,arn)
+    
+    if aro < arn:
+      sf = eox/enx
+    else:
+      sf = eoy/eny
+    print(sf)
+    self.canvas.zoom(ctx,cty,1/1000)
+    self.canvas.zoom(bbox[0],bbox[1],1000*0.9*sf)
+    sys.stdout.flush()
     pass
   def exportTed(self):
     path = self.askSaveFileName()
@@ -1769,10 +1819,15 @@ class App(tk.Frame):
         t1 = ted.SegType.Arc1CW if k1>0 else ted.SegType.Arc1CCW
         t2 = ted.SegType.Arc2CW if k2>0 else ted.SegType.Arc2CCW
 
-        # TODO: what to export if biarc segment is a straight?  if
-        # straight, above import routine has to be modified to look at
-        # both segment 1 and segment 2 and join straights and circle
-        # segments to biarcs
+        # TODO: what to export if biarc segment is a straight?
+        # is this correct??? vvvvvvvvvvvvvvvvv
+        eps = 2**-16
+        if abs(k1) < eps:
+          t1 = ted.SegType.NearlyStraight
+        if abs(k2) < eps:
+          t2 = ted.SegType.NearlyStraight
+          
+
         
         cp1 = TedCp(segtype=int(t1.value),
                     x=J[0],
@@ -1790,7 +1845,7 @@ class App(tk.Frame):
         div1 = max(mindiv,int(m.ceil(l1/divl)))
         div2 = max(mindiv,int(m.ceil(l2/divl)))
 
-        print("seg",1/k1,180*m.pi*a1,l1,div1,total_div,l,total_l)
+        print("seg",k1,180*m.pi*a1,l1,div1,total_div,l,total_l)
         
         segs.append(TedSeg(banking=0.0,
                            transition_prev_vlen=0.0,
@@ -1803,7 +1858,7 @@ class App(tk.Frame):
         total_l   += l1
         total_div += div1
         
-        print("seg",1/k2,180*m.pi*a2,l2,div2,total_div,l,total_l)
+        print("seg",k2,180*m.pi*a2,l2,div2,total_div,l,total_l)
 
         segs.append(TedSeg(banking=0.0,
                            transition_prev_vlen=0.0,
@@ -1901,17 +1956,58 @@ class App(tk.Frame):
     for cp in self.checkps:
       chps.append(TedCheck(vpos3d = cp.vpos3d/self.hdr.track_length * total_l))
 
+    railroot = raildefs.getRailRoot("rd/andalusia.raildef")
+    types, uuids, rails = raildefs.getRailDict(railroot)
+
+    trans = raildefs.getTransitionTypes(railroot)
+    
+      
     TedRoad =  ted.ted_data_tuple("road",ted.road)
     roads = []
+    sf = total_l/self.hdr.track_length
     for r in self.road:
-      vs = r.vstart3d / self.hdr.track_length * total_l
-      ve = r.vend3d / self.hdr.track_length * total_l
+      vl = r.vend3d - r.vstart3d
+      vs = r.vstart3d * sf # scale only startpoint
+      ve = vs + vl
+      print("road",vs,ve,vl)
       roads.append(TedRoad(uuid = r.uuid,flag=r.flag,vstart3d = vs, vend3d = ve))
+
+    exroads = []
+    for i,r in enumerate(roads):
+      prev = roads[i-1]
+      cur  = r
+      next = roads[i+1] if i+1 < len(roads) else roads[0]
+      if cur.uuid not in trans:
+        if next and next.uuid == cur.uuid:
+          vs = prev.vend3d
+          vl = cur.vend3d - cur.vstart3d
+          ve = vs + vl
+          exroads.append(cur._replace(vstart3d = vs, vend3d = ve))
+        else:
+          vs = prev.vend3d
+          vl = cur.vend3d - cur.vstart3d
+          vspace = next.vstart3d - vs
+          print(vspace)
+          if vspace < 2*vl:
+            vl = vl + vspace
+            exroads.append(cur._replace(vstart3d = vs, vend3d = vs+vl))
+          else:
+            newsegs = m.ceil(vspace/vl)
+            print(newsegs)
+            vl = vspace/newsegs
+            for i in range(newsegs):
+              exroads.append(cur._replace(vstart3d = vs+i*vl, vend3d = vs+(i+1)*vl))
+      else:
+        exroads.append(cur) # keep transition roads as is
+    roads = exroads
+    
     TedDeco =  ted.ted_data_tuple("deco",ted.decoration)
     decos = []
     for d in self.deco:
-      vs = d.vstart3d / self.hdr.track_length * total_l
-      ve = d.vend3d / self.hdr.track_length * total_l
+      vl = d.vend3d - d.vstart3d
+      vs = (d.vstart3d + d.vend3d) / 2 * sf # scale midpoint
+      vs = vs - l/2 # adjust start
+      ve = vs + vl
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
 
     hdr = deepcopy(self.hdr)
