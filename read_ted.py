@@ -275,6 +275,9 @@ if __name__ == "__main__":
             print (x.vend3d - x.vstart3d - float(railunit[x.uuid].find("unitLength").text) + exlen)
         print("deco")
         for i,x in enumerate(deco):
-            print(i,x,uuids[x.uuid], x.vend3d - x.vstart3d,railunit[x.uuid].find("unitLength").text, RailType(int(railunit[x.uuid].find("decoratedRailType").text)), TrackType(x.tracktype))
+            if x.uuid in railunit:
+                print(i,x,uuids[x.uuid], x.vend3d - x.vstart3d,railunit[x.uuid].find("unitLength").text, RailType(int(railunit[x.uuid].find("decoratedRailType").text)), TrackType(x.tracktype).name)
+            else:
+                print(i,x, x.vend3d - x.vstart3d, RailType(x.railtype).name,TrackType(x.tracktype).name)
         
         
