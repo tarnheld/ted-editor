@@ -38,9 +38,11 @@ class TrackType(Enum):
     RightCurb = 7
     Limit = 8
 
-def getRailDict(path):
+def getRailRoot(path):
     tree = ET.parse(path)
     root = tree.getroot()
+    return root
+def getRailDict(root):
     uuids = {}
     names = { "Unknown" : [] }
     railtypes = {}
@@ -75,3 +77,14 @@ def getRailDict(path):
                 uuids[uuid] = uuids[uuid] + " " + str(uidx)
                 uidx += 1
     return railtypes, uuids, railunit
+
+def getTransitionTypes(root):
+    trans = {}
+    for rg in root.iter("RailGroup"):
+        for rgi in rg.find("itemTransition"):
+            uuid = int(rgi.find("uuid").text)
+            trans[uuid] = uuid
+    return trans
+
+def getUnitLength(railunit):
+    return float(railunit.find("unitLength").text)
