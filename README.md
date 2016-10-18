@@ -8,9 +8,13 @@ the current repository and extract all contents preserving the folder
 structure.
 
 On Windows double click the batch file
-```pipinstall.bat```
+```
+pipinstall.bat
+```
 for installation of the requirements and
-```TedEditor.bat```
+```
+TedEditor.bat
+```
 for starting the Application.
 
 On Unices use
