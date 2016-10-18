@@ -1047,7 +1047,7 @@ class CCManip(FSM):
     self.rottag     = "rot"
     self.jointtag     = "joint"
 
-    s  = Enum("States","Idle Select Insert Append Move Rot SelRot SelScale")
+    s  = Enum("States","Idle Select Insert Append Move Rot SelRot SelScale Limbo")
     tt = {
       # (State, tag or None, event (None is any event)) -> (State, callback)
       
@@ -1070,7 +1070,8 @@ class CCManip(FSM):
       (s.Rot,    "rot",  "<ButtonRelease-1>")    : (s.Idle,   self.onRotEnd),
 
       # append point at end
-      (s.Idle,   None,  "<ButtonPress-1>")       : (s.Append, self.onPointAppendStart),
+      (s.Idle,   None,  "<ButtonPress-1>")       : (s.Limbo, None),
+      (s.Limbo,  None,  "<B1-Motion>")           : (s.Append, self.onPointAppendStart),
       (s.Append, None,  "<B1-Motion>")           : (s.Append, self.onPointAppendUpdate),
       (s.Append, None,  "<ButtonRelease-1>")     : (s.Idle,   self.onPointAppendEnd),
 
@@ -1078,10 +1079,13 @@ class CCManip(FSM):
       (s.Idle,   "segment", "<Button-2>")        : (s.Idle,   self.onSegmentChangeType),
       
       # insert point in segment
-      (s.Idle,   "segment", "<Double-Button-1>") : (s.Idle,   self.onSegmentInsert),
+      (s.Idle,   "segment", "<Double-Button-1>") : (s.Limbo,   self.onSegmentInsert),
 
       # remove point from segment
-      (s.Idle,   "move", "<Double-Button-1>")    : (s.Idle,   self.onPointRemove),
+      (s.Idle,   "move", "<Double-Button-1>")    : (s.Limbo,   self.onPointRemove),
+
+      # extra state to consume button press and button release of double click
+      (s.Limbo,   None,  "<ButtonRelease-1>")    : (s.Idle, None),
 
       # reverse track 
       (s.Idle,   None, "<Key-r>")                : (s.Idle,   self.onReverse),
@@ -1198,18 +1202,19 @@ class CCManip(FSM):
           self.imap[a] = ncids
           for cid in ncids:
             self.seg_cidmap[cid] = a
+    # redraw all joint handles except for segments in except_seg
+    for seg,cids in self.jointimap.items():
+      if seg in except_seg:
+        continue
+      for cid in cids:
+        self.canvas.delete(cid) # remove joint handles
     for seg in self.cc.segment:
       if seg in except_seg:
         continue
-      if seg in self.jointimap:
-        cids = self.jointimap[seg]
-        for cid in cids:
-          self.canvas.delete(cid)
       if seg.type is SegType.Biarc:
         cids = [self.addJointHandle(seg)]
         for cid in cids:
           self.joint_cidmap[cid] = seg
-          #print(cid,seg)
           if seg in self.jointimap:
             self.jointimap[seg].append(cids)
           else:
