@@ -31,6 +31,7 @@ for running the program.
 ## Mouse and Keyboard Cheatsheet
 
 Hopefully not too outdated:
+
 | Button/Key | Action |
 |------------|--------|
 | Middle Button | Move while pressed to drag Canvas View |
