@@ -34,7 +34,7 @@ Hopefully not too outdated:
 
 | Button/Key | Action |
 |------------|--------|
-| Middle Button | Move while pressed to drag Canvas View |
+| Middle Button | Move while pressed to drag Canvas View, on Segment(gray): toggle Straight/Curved |
 | Mouse Wheel | Zoom Canvas View |
 | Left Button | On Control Points (blue)/Joint Points(pink)/Tangent Points(yellow)/Segments(grey) drag to move |
 | Double Click | Control Points: remove point, Segments: insert point, Open Track anywhere: append point |
@@ -43,7 +43,6 @@ Hopefully not too outdated:
 | Control+Left Button | drag to scale selected points |
 | Shift+Left Button | drag to rotate selected points |
 | Key o | Toggle Track Open/Closed |
-| Key r | Reverse Track |
 | Key r | Reverse Track |
 | Control+Key z | Undo |
 | Control+Key r | Redo |
