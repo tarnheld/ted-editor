@@ -66,10 +66,65 @@ for rgi in root.iter("RailGroupItem"):
 print("railtypes")
 for rt,uuid in railtypes.items():
     print(rt,RailType(rt),uuid)
+    ruchilds = {}
+    if rt == 0: continue
     for u in uuid:
         print(uuids[u])
+        ru = railunit[u]
+        for child in ru:
+            if child.tag in ruchilds:
+                if child.text.isspace():
+                    ruchilds[child.tag].append([c.text for c in child])
+                else:
+                    ruchilds[child.tag].append(child.text)
+            else:
+                if child.text.isspace():
+                    ruchilds[child.tag] = [[c.text for c in child]]
+                else:
+                    ruchilds[child.tag] = [child.text]
+    for x,t in ruchilds.items():
+        print("   ",x,t)
 
-        
+roadtypes = {}
+for u in railtypes[0]:
+        ru = railunit[u]
+        roadtype = ru.find("type").text
+        if roadtype in roadtypes:
+            roadtypes[roadtype].append(u)
+        else:
+            roadtypes[roadtype] = [u]
+
+print("--------road types-------")
+for rt,uuid in roadtypes.items():
+    print("road type", rt)
+    ruchilds = {}
+    for u in uuid:
+        print(uuids[u])
+        ru = railunit[u]
+        for child in ru:
+            if child.tag in ruchilds:
+                if child.text.isspace():
+                    ruchilds[child.tag].append([c.text for c in child])
+                else:
+                    ruchilds[child.tag].append(child.text)
+            else:
+                if child.text.isspace():
+                    ruchilds[child.tag] = [[c.text for c in child]]
+                else:
+                    ruchilds[child.tag] = [child.text]
+    for x,t in ruchilds.items():
+        print("   ",x,t)
+                
+print("--------transition types-------")
+trans = {}
+for rg in root.iter("RailGroup"):
+    for rgi in rg.find("itemTransition"):
+        uuid = int(rgi.find("uuid").text)
+        trans[uuid] = railunit[uuid]
+
+for uuid,ru in trans.items():
+    print(uuid,uuids[uuid])
+            
 #slots = {}
 #print("RailDictionary")
 #for rd in root.iter("railDictionary"):
