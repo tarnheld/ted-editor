@@ -340,6 +340,13 @@ class SegType(Enum):
 def canvas_create_circle(canvas,p,r,**kw):
   "convenience canvas draw routine"
   return canvas.create_oval([p[0]-r,p[1]-r,p[0]+r,p[1]+r],**kw)
+
+class Banking:
+  def __init__(self,angle=0,prev_len=0,next_len=0):
+    self.angle = angle
+    self.prev_len = prev_len
+    self.next_len = next_len
+  
 ###########################################################################
 class CCSegment:
   def __init__(self, p1, p2, type = SegType.Straight, width=8, biarc_r=0.5):
@@ -348,6 +355,7 @@ class CCSegment:
     self.type    = type
     self.width   = width
     self.biarc_r = biarc_r
+    self.banking = [Banking(),Banking()]
 
     self.setup()
     
@@ -370,6 +378,26 @@ class CCSegment:
   def draw(self,canvas,cids=None,**kw):
     if not cids: cids = []
     cids.append(canvas.create_polygon([(x[0],x[1]) for x in self.poly],**kw))
+    return cids
+  def drawBanking(self,canvas,cids=None,**kw):
+    if not cids: cids = []
+    if self.type is SegType.Straight:
+      h = self.seg.eval(0.5)
+      l = self.seg.length()
+      txt = "{:.2f}".format(self.banking[0].angle)
+      cids.append(canvas.create_text([h[0],h[1]], text=txt, tags="segment"))
+    else:
+      c1,k1,a1,l1,c2,k2,a2,l2 = self.seg.circleparameters()
+      h1 = self.seg.eval(0.5*l1/(l1+l2))
+      h2 = self.seg.eval((l1+0.5*l2)/(l1+l2))
+      s1text = "\n{:.0f}".format(self.banking[0].angle)
+      s2text = "\n{:.0f}".format(self.banking[1].angle)
+      cids.append(canvas.create_text([h1[0],h1[1]],
+                                     text=s1text,
+                                     tags="segment"))
+      cids.append(canvas.create_text([h2[0],h2[1]],
+                                     text=s2text,
+                                     tags="segment"))
     return cids
   def drawText(self,canvas,cids=None,**kw):
     if not cids: cids = []
@@ -429,7 +457,6 @@ class ControlCurve:
     self.isOpen    = True
     self.point     = []
     self.segment   = []
-    self.cids      = {}
 
   def length(self):
     "total length of control curve"
@@ -768,20 +795,8 @@ def style_config_mod(cfg,lighten,saturate,thicken):
   return style
 
 
-###########################################################################  
-class CurveBankings:
-  class Banking:
-    def __init__(self,angle=0.0,trans=0.0):
-      self.angle     = angle
-      self.trans_len = trans_len
-  def __init__(self,cc):
-    self.cc = cc
-    self.bankings = []
-    self.setup()
-  def setup(self):
-    for s in self.cc.segment:
-      self.bankings.append(Banking())
-
+###########################################################################
+# unfinished:
 class RailItem:
   def __init__(self,l,type,uuid=0):
     self.l     = l
@@ -837,9 +852,6 @@ class CurveRails:
       name = raildefs.RailType(rt).name
       menu.add_radiobutton(label=name,value=rt,variable=type,command=cb)
     return type,menu
-      
-    
-
 
 ###########################################################################  
 class RailManip(FSM):
@@ -1086,7 +1098,9 @@ class CCManip(FSM):
 
       # change type of segment 
       (s.Idle,   "segment", "<Button-2>")        : (s.Idle,   self.onSegmentChangeType),
-      
+
+      #(s.Idle,   "segment", "<Button-3>")        : (s.Idle,   self.onSegmentChangeBanking),
+
       # insert point in segment
       (s.Idle,   "segment", "<Double-Button-1>") : (s.Limbo,   self.onSegmentInsert),
 
@@ -1666,7 +1680,7 @@ class App(tk.Frame):
     except FileNotFoundError:
       print("file not found!")
       return
-    #self.tedfile = bytearray(tedfile)
+    self.tedfile = bytearray(tedfile)
     self.hdr     = ted.ted_data_to_tuple("header",ted.header,tedfile,0)
     self.cps     = ted.ted_data_to_tuple_list("cp",ted.cp,tedfile,self.hdr.cp_offset,self.hdr.cp_count)
     self.banks   = ted.ted_data_to_tuple_list("bank",ted.segment,tedfile,self.hdr.bank_offset,self.hdr.bank_count)
@@ -1745,17 +1759,12 @@ class App(tk.Frame):
 
     ctx,cty = self.canvas.canvasxy(0,0)
     cbx,cby = self.canvas.canvasxy(self.canvas.winfo_reqwidth(),-self.canvas.winfo_reqheight())
-    print(bbox)
-    print(ctx,cty,cbx,cby)
-    print(abs(ctx-cbx)/abs(bbox[1]-bbox[0]))
-    print(abs(cty-cby)/abs(bbox[3]-bbox[2]))
     eox = abs(ctx-cbx)
     eoy = abs(cty-cby)
     enx = abs(bbox[0]-bbox[2])
     eny = abs(bbox[1]-bbox[3])
     aro = eox/eoy
     arn = enx/eny
-    print(eox,eoy,enx,eny,aro,arn)
     
     if aro < arn:
       sf = eox/enx
@@ -1766,8 +1775,74 @@ class App(tk.Frame):
     self.canvas.zoom(bbox[0],bbox[1],1000*0.9*sf)
     sys.stdout.flush()
     pass
-  def exportTed(self):
+  def exportTedCpOnly(self):
+    # convert ted
+    TedCp  = ted.ted_data_tuple("cp",ted.cp)
+    cps = []
+    for i,seg in enumerate(self.cc.segment):
+      if seg.type is SegType.Straight:
+        cp1 = TedCp(segtype=int(ted.SegType.Straight.value),
+                    x=seg.ps.point[0],
+                    y=seg.ps.point[1],
+                    center_x=0,
+                    center_y=0)
+        cp2 = TedCp(segtype=int(ted.SegType.Straight.value),
+                    x=seg.pe.point[0],
+                    y=seg.pe.point[1],
+                    center_x=0,
+                    center_y=0)
+        if i == 0:
+          cps.append(cp1)
+        cps.append(cp2)
+      else:
+        p0 = seg.ps.point
+        p1 = seg.pe.point
+        J  = seg.seg.joint()
+        
+        c1,k1,a1,l1,c2,k2,a2,l2 = seg.seg.circleparameters()
+        t1 = ted.SegType.Arc1CW if k1>0 else ted.SegType.Arc1CCW
+        t2 = ted.SegType.Arc2CW if k2>0 else ted.SegType.Arc2CCW
+
+        # TODO: what to export if biarc segment is a straight?
+        # is this correct??? vvvvvvvvvvvvvvvvv
+        eps = 2**-16
+        if abs(k1) < eps:
+          t1 = ted.SegType.NearlyStraight
+        if abs(k2) < eps:
+          t2 = ted.SegType.NearlyStraight
+        
+        cp1 = TedCp(segtype=int(t1.value),
+                    x=J[0],
+                    y=J[1],
+                    center_x=c1[0],
+                    center_y=c1[1])
+        cp2 = TedCp(segtype=int(t2.value),
+                    x=p1[0],
+                    y=p1[1],
+                    center_x=c2[0],
+                    center_y=c2[1])
+        cps.append(cp1)
+        cps.append(cp2)
+    hdr = self.hdr
+    ted.tuple_to_ted_data(self.hdr,ted.header,self.tedfile,0)
+    ted.tuple_list_to_ted_data(cps,ted.cp,self.tedfile,hdr.cp_offset,hdr.cp_count)
+    ted.tuple_list_to_ted_data(self.banks,ted.segment,self.tedfile,hdr.bank_offset,hdr.bank_count)
+    ted.tuple_list_to_ted_data(self.heights,ted.height,self.tedfile,hdr.height_offset,hdr.height_count)
+    ted.tuple_list_to_ted_data(self.checkps,ted.checkpoint,self.tedfile,hdr.checkpoint_offset,hdr.checkpoint_count)
+    ted.tuple_list_to_ted_data(self.road,ted.road,self.tedfile,hdr.road_offset,hdr.road_count)
+    ted.tuple_list_to_ted_data(self.deco,ted.decoration,self.tedfile,hdr.decoration_offset,hdr.decoration_count)
+
+    # write to disk
     path = self.askSaveFileName()
+    try:
+      with open(path, mode='wb') as file:
+        file.write(self.tedfile)
+    except FileNotFoundError:
+      print("file not found!")
+      return
+
+  def exportTed(self):
+    # convert ted
     TedCp  = ted.ted_data_tuple("cp",ted.cp)
     TedSeg = ted.ted_data_tuple("segment",ted.segment)
     cps = []
@@ -1796,20 +1871,18 @@ class App(tk.Frame):
         cps.append(cp2)
         l = la.norm(seg.pe.point - seg.ps.point)
         div = max(mindiv,int(m.ceil(l/divl)))
-
       
         segs.append(TedSeg(banking=0.0,
                            transition_prev_vlen=0.0,
                            transition_next_vlen=0.0,
-                           divisions=div,
-                           total_divisions=total_div,
-                           vstart=total_l,
-                           vlen=l))
+                           divisions = div,
+                           total_divisions = total_div,
+                           vstart = total_l,
+                           vlen = l))
         divs.append((seg.ps.point,seg.pe.point,div))
         print("seg",l,div,total_div,l,total_l)
         total_l   += l
         total_div += div
-        
       else:
         p0 = seg.ps.point
         p1 = seg.pe.point
@@ -1874,7 +1947,7 @@ class App(tk.Frame):
         total_l   += l2
         total_div += div2
 
-
+    # convert height array
     TedHgt  = ted.ted_data_tuple("height",ted.height)
     hm = np.load("hm/andalusia.npz")
     hme = hm["extents"]
@@ -1951,67 +2024,36 @@ class App(tk.Frame):
     
     print(len(hgts),len(self.heights))
 
+    sf = total_l/self.hdr.track_length
+
     TedCheck = ted.ted_data_tuple("checkpoint",ted.checkpoint)
     chps = []
     for cp in self.checkps:
-      chps.append(TedCheck(vpos3d = cp.vpos3d/self.hdr.track_length * total_l))
-
-    railroot = raildefs.getRailRoot("rd/andalusia.raildef")
-    types, uuids, rails = raildefs.getRailDict(railroot)
-
-    trans = raildefs.getTransitionTypes(railroot)
+      chps.append(TedCheck(vpos3d = cp.vpos3d*sf))
     
-      
+    # convert road railunits
     TedRoad =  ted.ted_data_tuple("road",ted.road)
     roads = []
-    sf = total_l/self.hdr.track_length
     for r in self.road:
-      vl = r.vend3d - r.vstart3d
-      vs = r.vstart3d * sf # scale only startpoint
-      ve = vs + vl
-      print("road",vs,ve,vl)
-      roads.append(TedRoad(uuid = r.uuid,flag=r.flag,vstart3d = vs, vend3d = ve))
-
-    exroads = []
-    for i,r in enumerate(roads):
-      prev = roads[i-1]
-      cur  = r
-      next = roads[i+1] if i+1 < len(roads) else roads[0]
-      if cur.uuid not in trans:
-        if next and next.uuid == cur.uuid:
-          vs = prev.vend3d
-          vl = cur.vend3d - cur.vstart3d
-          ve = vs + vl
-          exroads.append(cur._replace(vstart3d = vs, vend3d = ve))
-        else:
-          vs = prev.vend3d
-          vl = cur.vend3d - cur.vstart3d
-          vspace = next.vstart3d - vs
-          print(vspace)
-          if vspace < 2*vl:
-            vl = vl + vspace
-            exroads.append(cur._replace(vstart3d = vs, vend3d = vs+vl))
-          else:
-            newsegs = m.ceil(vspace/vl)
-            print(newsegs)
-            vl = vspace/newsegs
-            for i in range(newsegs):
-              exroads.append(cur._replace(vstart3d = vs+i*vl, vend3d = vs+(i+1)*vl))
-      else:
-        exroads.append(cur) # keep transition roads as is
-    roads = exroads
+      # scale midpoint
+      vs = r.vstart3d * sf
+      ve = r.vend3d   * sf
+      roads.append(TedRoad(uuid = r.uuid, flag=r.flag, vstart3d = vs, vend3d = ve))
+      
     
+    # convert decoration railunits
     TedDeco =  ted.ted_data_tuple("deco",ted.decoration)
     decos = []
     for d in self.deco:
       vl = d.vend3d - d.vstart3d
-      vs = (d.vstart3d + d.vend3d) / 2 * sf # scale midpoint
-      vs = vs - l/2 # adjust start
-      ve = vs + vl
+      vm = (d.vstart3d + d.vend3d) / 2 # scale midpoint
+      vms = vms *sf
+      vs = vm - l/2
+      ve = vm + l/2
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
 
+    # build new tedfile
     hdr = deepcopy(self.hdr)
-
 
     tedsz = (ted.ted_data_size(ted.header) +
              ted.ted_data_size(ted.cp) * len(cps) +
@@ -2021,7 +2063,6 @@ class App(tk.Frame):
              ted.ted_data_size(ted.road) * len(roads) +
              ted.ted_data_size(ted.decoration) * len(decos) )
     
-
     self.tedfile = bytearray(b'\x00'*tedsz)
     
     hdr = hdr._replace(track_length=total_l,elevation_diff=eldiff)
@@ -2043,6 +2084,8 @@ class App(tk.Frame):
 
     ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
 
+    # write to disk
+    path = self.askSaveFileName()
     try:
       with open(path, mode='wb') as file:
         file.write(self.tedfile)
@@ -2083,6 +2126,7 @@ class App(tk.Frame):
     filemenu.add_command(label="Save Track", command=self.saveCP)
     filemenu.add_command(label="Import TED", command=self.importTed)
     filemenu.add_command(label="Export TED", command=self.exportTed)
+    #filemenu.add_command(label="Export TED Lite", command=self.exportTedCpOnly)
     filemenu.add_separator()
     filemenu.add_command(label="Import Image", command=self.importImg)
     filemenu.add_command(label="Discard Image", command=self.discardImg)
