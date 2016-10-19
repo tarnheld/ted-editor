@@ -2024,6 +2024,9 @@ class App(tk.Frame):
     
     print(len(hgts),len(self.heights))
 
+    # total_l is the new track length, self.hdr is the header of the imported ted file and contains
+    # the old track_length.
+    # sf is the linear scale factor for the lengths of road and decoration elements and others
     sf = total_l/self.hdr.track_length
 
     TedCheck = ted.ted_data_tuple("checkpoint",ted.checkpoint)
@@ -2031,25 +2034,29 @@ class App(tk.Frame):
     for cp in self.checkps:
       chps.append(TedCheck(vpos3d = cp.vpos3d*sf))
     
+
+    railroot = raildefs.getRailRoot("rd/andalusia.raildef")
+    # rework this function to deliver useful information
+    types, uuids, content = raildefs.getRailDict(railroot)
+
     # convert road railunits
     TedRoad =  ted.ted_data_tuple("road",ted.road)
-    roads = []
-    for r in self.road:
-      # scale midpoint
+    roads = [] # holds new road elements, can be more or less than elements in self.road 
+    for r in self.road: # all road elements in the imported ted file
+      # do something useful with above data while converting the roads
       vs = r.vstart3d * sf
-      ve = r.vend3d   * sf
+      ve = r.vend3d  * sf
       roads.append(TedRoad(uuid = r.uuid, flag=r.flag, vstart3d = vs, vend3d = ve))
-      
-    
+
     # convert decoration railunits
     TedDeco =  ted.ted_data_tuple("deco",ted.decoration)
     decos = []
     for d in self.deco:
       vl = d.vend3d - d.vstart3d
       vm = (d.vstart3d + d.vend3d) / 2 # scale midpoint
-      vms = vs * sf
-      vs = vm - l/2
-      ve = vm + l/2
+      vms = vm * sf
+      vs = vms - l/2
+      ve = vms + l/2
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
 
     # build new tedfile
