@@ -2047,7 +2047,7 @@ class App(tk.Frame):
     for d in self.deco:
       vl = d.vend3d - d.vstart3d
       vm = (d.vstart3d + d.vend3d) / 2 # scale midpoint
-      vms = vms *sf
+      vms = vs * sf
       vs = vm - l/2
       ve = vm + l/2
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
