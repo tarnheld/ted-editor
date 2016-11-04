@@ -1156,9 +1156,10 @@ class CCManip(FSM):
       (s.Idle,   None, "<Key-r>")                : (s.Idle,   self.onReverse),
 
       # selection bindings
-      (s.Select, None,  "<ButtonPress-3>")       : (s.Select, self.onSelectionStart),
+      (s.Idle  , None,  "<ButtonPress-3>")       : (s.Select, self.onSelectionStart),
       (s.Select, None,  "<B3-Motion>")           : (s.Select, self.onSelectionUpdate),
-      (s.Select, None,  "<ButtonRelease-3>")     : (s.Select, self.onSelectionEnd),
+      (s.Select, None,  "<ButtonRelease-3>")     : (s.Idle,   self.onSelectionEnd),
+      
       (s.Idle,   "move","<Control-Button-3>")    : (s.Select, self.onSelectionToggle),
       (s.Select, "move","<ButtonRelease-3>")     : (s.Idle,  None),
       
@@ -2214,8 +2215,8 @@ class App(tk.Frame):
 
     self.canvas.pack(side=tk.LEFT,expand=True,fill=tk.BOTH)
 
-    self.canvas.bind("<ButtonPress-3>", self.onDragStart)
-    self.canvas.bind("<ButtonRelease-3>", self.onDragEnd)
+    self.canvas.bind("<ButtonPress-2>", self.onDragStart)
+    self.canvas.bind("<ButtonRelease-2>", self.onDragEnd)
     self.canvas.bind("<Key-d>", self.onDragToggle)
     self.canvas.bind("<MouseWheel>", self.onWheel)
     self.canvas.bind("<Motion>", self.onDrag)
