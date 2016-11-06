@@ -50,7 +50,7 @@ class SampleApp(tk.Frame):
 
         # app title
         version = "1.0.7b"
-        self.title("Elevation Editor v."+ version)
+        self.master.title("Elevation Editor v."+ version)
         
         # create a toplevel menu and a frame
         self.menubar = tk.Menu(self)
@@ -246,9 +246,11 @@ class SampleApp(tk.Frame):
             self.delete_old()
             self.extract_structure(structure)
 
-    def update_structure(self):
+    def get_heightlist(self):
         tokenlist = self._gen_tokenlist()
-        self.structure['mod'] = [token[1]-(self._first_y/self._y_scale) for token in tokenlist]
+        return [token[1]-(self._first_y/self._y_scale) for token in tokenlist]
+    def update_structure(self):
+        self.structure['mod'] = self.get_heightlist()
         return self.structure
     
     def _export_ted(self):
