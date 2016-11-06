@@ -320,31 +320,6 @@ class Biarc:
       aa2 = 2*m.acos(cha2)
       minl = l1 + (aa2 / abs(k2) if k2 != 0 else t2*l2)
     return mind,minl
-  def tedpoints(self):
-    p0 = self.p0
-    p1 = self.p1
-    J  = self.J
-    
-    c1,k1,a1,l1,c2,k2,a2,l2 = self.circleparameters()
-    t1 = ted.SegType.Arc1CW if k1>0 else ted.SegType.Arc1CCW
-    t2 = ted.SegType.Arc2CW if k2>0 else ted.SegType.Arc2CCW
-
-    eps = 2**-16
-    if abs(k1) < eps:
-      t1 = ted.SegType.NearlyStraight
-    if abs(k2) < eps:
-      t2 = ted.SegType.NearlyStraight
-    cp1 = TedCp(segtype=int(t1.value),
-                x=J[0],
-                y=J[1],
-                center_x=c1[0],
-                center_y=c1[1])
-    cp2 = TedCp(segtype=int(t2.value),
-                x=p1[0],
-                y=p1[1],
-                center_x=c2[0],
-                center_y=c2[1])
-    return [cp1,cp2]
 ###########################################################################
 def line_seg_distance_sqr_and_length(p0,p1,p):
   chord = p0 - p1
@@ -379,20 +354,11 @@ class Straight:
     self.p1 = transform_point(self.p1,xform)
   TedCp  = ted.ted_data_tuple("cp",ted.cp)
   TedSeg = ted.ted_data_tuple("segment",ted.segment)
-  def tedpoints(self):
-    """returns list of ted control points and segments: 
-    start and end points, and segment curvature"""
-    cp1 = TedCp(segtype=int(ted.SegType.Straight.value),
-                x=self.p0[0],
-                y=self.p0[1],
-                center_x=0,
-                center_y=0)
-    cp2 = TedCp(segtype=int(ted.SegType.Straight.value),
-                x=self.p1[0],
-                y=self.p1[1],
-                center_x=0,
-                center_y=0)
-    return [cp1,cp2]
+  def circleparameters(self):
+    c1,k1,a1,l1 = (0,0),0,0,la.norm(self.p0-self.p1)
+    c2,k2,a2,l2 = (0,0),0,0,0
+
+    return c1,k1,a1,l1,c2,k2,a2,l2
 def offsetLine(segment,ts,te,o,n):
   so = segment.offset(o)
   cas = []
@@ -453,6 +419,28 @@ class CCSegment:
                        self.biarc_r)
       self.np  = 32
     self.poly = offsetPolygon(self.seg,0,1,-self.width/2,self.width/2,self.np)
+  def lengths(self):
+    """returns lengths of either straight or both cirular arcs"""
+    if self.type is SegType.Straight:
+      return [self.seg.length()]
+    else:
+      c1,k1,a1,l1,c2,k2,a2,l2 = self.seg.circleparameters()
+      return [l1,l2]
+  def shapeparameters(self):
+    """ returns end points, lengths, curvature, center of circle of subsegments"""
+    if self.type is SegType.Straight:
+      return [(self.pe,self.seg.length(),0,la.coords(0,0))]
+    else:
+      c1,k1,a1,l1,c2,k2,a2,l2 = self.seg.circleparameters()
+      return [(self.seg.J,l1,k1,c1),(self.pe.point,l2,k2,c2)]
+      
+  def reverse(self):
+    # reverse endpoints from point array
+    self.ps,self.pe   = self.pe,self.ps
+    # reverse biarc parameter
+    self.biarc_r = 1 - self.biarc_r
+    # TODO: banking data reverse
+    self.setup()
   def transform(self,xform):
     self.seg.transform(xform)
     for i,p in enumerate(self.poly):
@@ -602,6 +590,7 @@ class ControlCurve:
         cps.add(s.ps)
         cps.add(s.pe)
     return cps
+  # manipulation methods:
   def setTangent(self,cp,t):
     cp.tangent = t
     return self.__setupCp(cp)
@@ -746,14 +735,14 @@ class ControlCurve:
     # reverse tangents
     for p in self.point:
       p.tangent = -p.tangent
+      print("point",p.point,p.tangent)
 
     # reverse start and end points in segments
-    for i,s in enumerate(self.segment):
-      # reset endpoints from point array
-      s.ps,s.pe   = self.point[i],self.point[i+1 if i+1 < len(self.point) else 0]
-      if s.type is SegType.Biarc:
-        s.biarc_r = 1 - s.biarc_r
-      print("segment",i,s.type,s.ps.point,s.pe.point,self.point[i])
+    for s in self.segment:
+      s.reverse()
+      print("segment",s.type,s.ps.point,s.pe.point)
+
+    print(self.pointAt(0))
 
     return self.segment # all are affected
 
@@ -900,7 +889,7 @@ class CurveRails:
 ###########################################################################
 class RailManip(FSM):
   def __init__(self,cc,canvas):
-    self.cc = cc
+    self.cc = cc # TODO: what if new curve is exported???!!!
     self.canvas = canvas
     self.history = []
     self.future  = []
@@ -960,7 +949,7 @@ class RailManip(FSM):
 
     self.cr = CurveRails(self.cc)
 
-
+  
 
   def addMoveHandle(self, railitem):
     c,t = self.cc.pointAndTangentAt(railitem.l)
@@ -1735,11 +1724,15 @@ class BankingManip(tk.Frame):
     
     self.drawCoords()
     self.drawBanking()
+    self.drawTransition(True)
 
     self.canvas.bind("<Motion>", self.onMouseMotion)
     self.canvas.bind("<MouseWheel>", self.onWheel)
     self.canvas.tag_bind("bank","<B1-Motion>",self.onBankMove)
-    
+    self.canvas.tag_bind("transpoint","<B1-Motion>",self.onTransMove)
+  def onClose(self):
+    if self.appcid:
+      self.app.canvas.delete(self.appcid)
   def onWheel(self, ev):
     cx,cy = self.canvas.canvasxy(ev.x,ev.y)
     sf = 1.1
@@ -1747,13 +1740,19 @@ class BankingManip(tk.Frame):
     # scale all objects on canvas
     self.canvas.zoom(cx, cy, sf)
   def onMouseMotion(self,ev):
-    l,_ = self.canvas.canvasxy(ev.x, ev.y)
+    l,a = self.canvas.canvasxy(ev.x, ev.y)
     if l < 0: l = 0
     if l > self.cc.length(): l = self.cc.length()
     p = self.cc.pointAt(l)
     if self.appcid:
       self.app.canvas.delete(self.appcid)
     self.appcid = canvas_create_circle(self.app.canvas,p,10)
+    if self.textcid:
+      self.canvas.delete(self.textcid)
+    self.textcid = self.canvas.create_text(self.canvas.canvasxy(10,10),
+                                           text="{:.2f}m\n{:.4f}°".format(l,a),
+                                           anchor = tk.NW, tag="fixed-to-window")
+
   def drawCoords(self):
     self.canvas.create_line(0,0,self.cc.length(),0, fill="black",tag="grid")
     self.canvas.create_line(0,-180,   0,180, fill="black",tag="grid")
@@ -1761,21 +1760,80 @@ class BankingManip(tk.Frame):
       self.canvas.create_line(0,+i,self.cc.length(),+i, fill="grey",tag="grid")
       self.canvas.create_line(0,-i,self.cc.length(),-i, fill="grey",tag="grid")
     self.canvas.tag_lower("grid")
-  def drawBanking(self):
+  def drawTransition(self,withPoints=False):
+    self.canvas.delete("trans")
+    if withPoints:
+      delitem = []
+      for cid,bk in self.imap.items():
+        if "transpoint" in self.canvas.gettags(cid):
+          delitem.append(cid)
+      for cid in delitem:
+        self.canvas.delete(cid)
+        self.imap.pop(cid)
     tl = 0
     for i,seg in enumerate(self.cc.segment):
       prev = self.cc.segment[i-1]
-      bk = seg.banking
-      l = seg.seg.length()
-      bankcid = self.canvas.create_line(tl,bk[0].angle,tl+l,bk[0].angle,
-                                        width = 3, activewidth = 5,
-                                        fill = "blue", tags = "bank")
-      self.imap[bankcid] = bk[0]
-      transcid = canvas_create_circle(self.canvas,(tl,bk[0].angle),5,
-                                      width = 3, activewidth = 5,
-                                      fill = "blue", tags = "trans")
-      self.imap[transcid] = (bk[0],prev,seg)
-      tl += l
+      next = self.cc.segment[i+1 if i < len(self.cc.segment)-1 else 0]
+      shapes_p = prev.shapeparameters()
+      shapes = seg.shapeparameters()
+      ns = len(shapes)
+
+      bk_p  = (prev.banking[len(shapes_p)-1],seg.banking[0])
+      bk_n  = (next.banking[0],seg.banking[ns-1])
+
+      for j,shape in enumerate(shapes):
+        ep,l,k,center = shape
+        bk = seg.banking[j]
+        bk1 = bk_p[j]
+        bk2 = bk_n[ns-1-j]
+        self.canvas.create_line(tl - bk1.next_len, bk1.angle, tl + bk.prev_len, bk.angle,
+                                width = 1, fill = "lightblue", tags = "trans")
+        self.canvas.create_line(tl + l - bk.next_len, bk.angle, tl + l + bk2.prev_len, bk2.angle,
+                                width = 1, fill = "lightblue", tags = "trans")
+        if withPoints:
+          transcid = canvas_create_circle(self.canvas,[tl+bk.prev_len,bk.angle],5,
+                                          width = 3, fill = "blue", tags = "transpoint")
+          self.imap[transcid] = (bk,"prev",tl,tl+l)
+          transcid = canvas_create_circle(self.canvas,[tl+l-bk.next_len,bk.angle],5,
+                                          width = 3, fill = "blue", tags = "transpoint")
+          self.imap[transcid] = (bk,"next",tl,tl+l)
+        tl += l
+  def onTransMove(self,ev):
+    l,a = self.canvas.canvasxy(ev.x, ev.y)
+    cid = self.canvas.find_withtag("current")[0]
+    bk,prev_or_next,bl,el = self.imap[cid]
+    dl = 0
+    if l < bl:
+      l = bl
+    if l > el:
+      l = el
+    if (prev_or_next == "prev"):
+      bk.prev_len = l - bl
+    else:
+      bk.next_len = el - l
+    sl,sa,el,ea = self.canvas.coords(cid)
+    self.canvas.move(cid,l-(sl+el)/2,0)
+    self.drawTransition()
+    self.drawBanking()
+  def drawBanking(self):
+    delitem = []
+    for cid,bk in self.imap.items():
+      if "bank" in self.canvas.gettags(cid):
+        delitem.append(cid)
+    for cid in delitem:
+      self.canvas.delete(cid)
+      self.imap.pop(cid)
+    tl = 0
+    for i,seg in enumerate(self.cc.segment):
+      shapes = seg.shapeparameters()
+      for j,shape in enumerate(shapes):
+        ep,l,k,center = shape
+        bk = seg.banking[j]
+        bankcid = self.canvas.create_line(tl+bk.prev_len,bk.angle,tl+l-bk.next_len,bk.angle,
+                                          width = 3, activewidth = 5,
+                                          fill = "blue", tags = "bank")
+        self.imap[bankcid] = bk
+        tl += l
   def onBankMove(self,ev):
     l,a = self.canvas.canvasxy(ev.x, ev.y)
     cid = self.canvas.find_withtag("current")[0]
@@ -1783,11 +1841,7 @@ class BankingManip(tk.Frame):
     bk.angle = a
     sl,sa,el,ea = self.canvas.coords(cid)
     self.canvas.move(cid,0,a-sa)
-    if self.textcid:
-      self.canvas.delete(self.textcid)
-    self.textcid = self.canvas.create_text(l,a,
-                                           text="{:.4f}°".format(a),
-                                           anchor = tk.SW)
+    self.drawTransition(True)
     
 ###########################################################################
 class App(tk.Frame):
@@ -1848,7 +1902,12 @@ class App(tk.Frame):
       print(i,ted.SegType(cp.segtype),cp.x,cp.y,cp.center_x,cp.center_y, l)
       sys.stdout.flush()
       if (ted.SegType(cp.segtype) == ted.SegType.Straight):
-        self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Straight,width)
+        p,seg,_ = self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Straight,width)
+        if seg:
+          seg.banking[0].angle    = self.banks[i-1].banking
+          seg.banking[0].prev_len = self.banks[i-1].transition_prev_vlen
+          seg.banking[0].next_len = self.banks[i-1].transition_next_vlen
+      # biarc segment
       segarc2  = (ted.SegType(cp.segtype) == ted.SegType.Arc2CCW or
                   ted.SegType(cp.segtype) == ted.SegType.Arc2CW)
       prevsegarc1 = (ted.SegType(prev.segtype) == ted.SegType.Arc1CCW or
@@ -1876,27 +1935,26 @@ class App(tk.Frame):
         if ted.SegType(cp.segtype) == ted.SegType.NearlyStraight:
           t = la.unit(la.coords(cp.x-prev.x,cp.y-prev.y))
 
-        #biarc_r = la.norm(joint-p0)/(la.norm(joint-p0)+la.norm(joint-p1))
+        biarc_r = la.norm(joint-p0)/(la.norm(joint-p0)+la.norm(joint-p1))
         
-        biarc_r = bezier_circle_parameter(p0,p1,self.cc.point[-1].tangent,joint)
+        #biarc_r = bezier_circle_parameter(p0,p1,self.cc.point[-1].tangent,joint)
         
         p,seg,_ = self.cc.appendPoint(la.coords(cp.x,cp.y),SegType.Biarc,width,biarc_r)
         p.tangent = t
 
-        ba = self.banks[i-1].banking
-
-        
-        aba = ba /180*m.pi
-        try:
-          tba = m.tan(aba)
-        except:
-          tba = 0
-        print ("banking:",i,r,ba,aba,tba,tba*r)
+        seg.banking[0].angle    = self.banks[i-2].banking
+        seg.banking[0].prev_len = self.banks[i-2].transition_prev_vlen
+        seg.banking[0].next_len = self.banks[i-2].transition_next_vlen
+        seg.banking[1].angle    = self.banks[i-1].banking
+        seg.banking[1].prev_len = self.banks[i-1].transition_prev_vlen
+        seg.banking[1].next_len = self.banks[i-1].transition_next_vlen
 
     if self.hdr.is_loop and self.cc.isOpen:
       biarc_r = self.cc.segment[-1].biarc_r
+      bk = self.cc.segment[-1].banking
       self.cc.removePoint(self.cc.point[-1])
       self.cc.toggleOpen(width,biarc_r)
+      self.cc.segment[-1].banking = bk
 
     self.ccmanip.cc = self.cc
     self.ccmanip.redrawSegments()
@@ -1932,7 +1990,7 @@ class App(tk.Frame):
     total_div = 0
     l = 0
     div = 0
-    divl = 8.0
+    divl = 4.0
     mindiv = 6
     divs = []
     for i,seg in enumerate(self.cc.segment):
@@ -1952,10 +2010,10 @@ class App(tk.Frame):
         cps.append(cp2)
         l = la.norm(seg.pe.point - seg.ps.point)
         div = max(mindiv,int(m.ceil(l/divl)))
-
-        segs.append(TedSeg(banking=0.0,
-                           transition_prev_vlen=0.0,
-                           transition_next_vlen=0.0,
+        sdl = l/div
+        segs.append(TedSeg(banking=seg.banking[0].angle,
+                           transition_prev_vlen=seg.banking[0].prev_len,
+                           transition_next_vlen=seg.banking[0].next_len,
                            divisions = div,
                            total_divisions = total_div,
                            vstart = total_l,
@@ -1997,14 +2055,18 @@ class App(tk.Frame):
         cps.append(cp2)
 
         div1 = max(mindiv,int(m.ceil(l1/divl)))
+        sdl1 = l1/div1
         div2 = max(mindiv,int(m.ceil(l2/divl)))
+        sdl2 = l2/div2
 
         print("seg",k1,180*m.pi*a1,l1,div1,total_div,l,total_l)
 
-        segs.append(TedSeg(banking=0.0,
-                           transition_prev_vlen=0.0,
-                           transition_next_vlen=0.0,
-                           divisions=max(div1,mindiv),
+        segs.append(TedSeg(banking=seg.banking[0].angle,
+                           #transition_prev_vlen=m.ceil(seg.banking[0].prev_len/sdl1)*sdl1,
+                           #transition_next_vlen=m.ceil(seg.banking[0].next_len/sdl1)*sdl1,
+                           transition_prev_vlen=seg.banking[0].prev_len,
+                           transition_next_vlen=seg.banking[0].next_len,
+                           divisions=div1,
                            total_divisions=total_div,
                            vstart=total_l,
                            vlen=l1))
@@ -2014,10 +2076,12 @@ class App(tk.Frame):
 
         print("seg",k2,180*m.pi*a2,l2,div2,total_div,l,total_l)
 
-        segs.append(TedSeg(banking=0.0,
-                           transition_prev_vlen=0.0,
-                           transition_next_vlen=0.0,
-                           divisions=max(div2,mindiv),
+        segs.append(TedSeg(banking=seg.banking[1].angle,
+                           #transition_prev_vlen=m.ceil(seg.banking[1].prev_len/sdl2)*sdl2,
+                           #transition_next_vlen=m.ceil(seg.banking[1].next_len/sdl2)*sdl2,
+                           transition_prev_vlen=seg.banking[1].prev_len,
+                           transition_next_vlen=seg.banking[1].next_len,
+                           divisions=div2,
                            total_divisions=total_div,
                            vstart=total_l,
                            vlen=l2))
@@ -2295,11 +2359,12 @@ class App(tk.Frame):
     else:
       self.onBankingClose()
   def onBankingClose(self):
-      self.bankmanip = None
-      self.bankwindow.destroy()
-      self.bankwindow = None
-      self.ccmanip.addHandles()
-      self.ccmanip.start()
+    self.bankmanip.onClose()
+    self.bankmanip = None
+    self.bankwindow.destroy()
+    self.bankwindow = None
+    self.ccmanip.addHandles()
+    self.ccmanip.start()
     
       
   def drawContours(self,path):

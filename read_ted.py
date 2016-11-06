@@ -191,6 +191,7 @@ def tuple_list_to_ted_data(lst,fmt,data,offset,count):
 
 
 if __name__ == "__main__":
+    import math as m
     import xml.etree.ElementTree as ET
     tree = ET.parse('rd/andalusia.raildef')
     root = tree.getroot()
@@ -250,12 +251,17 @@ if __name__ == "__main__":
         #quit()
         print(hdr)
         print("checkpoints")
+        radii = []
         for i,x in enumerate(cps):
             print(i,x)
+            radii.append(0 if x.segtype == 0 else ((x.center_x-x.x)**2+(x.center_y-x.y)**2)**(1/2))
+            print(i,"radius:",radii[i])
         print("banks")
         nh = 0;
         for i,x in enumerate(banks):
+            dl = x.vlen/x.divisions
             print(i,x)
+            print(i,"   ",dl,x.transition_prev_vlen/dl,x.transition_next_vlen/dl,(x.transition_next_vlen+x.transition_prev_vlen)/dl)
             nh += x.divisions
         print("numheights:",nh)
         print("height")
