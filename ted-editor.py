@@ -199,7 +199,6 @@ def point_on_circle(p0,p1,t0,p):
 
     t = bezier_circle_parameter(p0,p1,t0,pc)
     return pc, t, la.dot(la.unit(t0),la.unit(pc-p0))
-
 def offset_circle(hs,o):
   t0 = la.unit(bezier2_dr(0,  hs)) # tangent at p0
   t1 = la.unit(bezier2_dr(0.5,hs)) # tangent at p1
@@ -208,14 +207,6 @@ def offset_circle(hs,o):
   pt1 = la.hom(la.perp2ccw(t1),0)  # offset direction at p1
   pt2 = la.hom(la.perp2ccw(t2),0)  # offset direction at p2
   return [hs[0] + o*pt0, hs[1] + o*pt1, hs[2] + o*pt2]
-
-
-# not finished yet, should return the r parameter of a biarc given the
-# five points defining the two circular arcs
-def biarc_r_from_arcs(a1,a2):
-  alpha = la.norm(a1[0] - la.proj(a1[1]))
-  beta  = la.norm(a1[3] - la.proj(a1[4]))
-  return alpha/beta
 def transform_bezier_circle(hs,xform):
   for i,h in enumerate(hs):
     th = la.vapply(xform,la.coords(h[0],h[1],0,h[2]))
@@ -574,6 +565,7 @@ class ControlCurve:
     self.isOpen    = True
     self.point     = []
     self.segment   = []
+    self.rail      = []
   def getHeightList(self):
     hl = []
     for i,s in enumerate(self.segment):
@@ -813,6 +805,8 @@ class ControlCurve:
   def appendPoint(self,p,*args):
     return self.insertPoint(None,p,*args)
   def removePoint(self,cp):
+    if cp is self.point[0] or cp is self.point[1]:
+      return [] # don't remove first point
     segs = self.__segmentsof(cp)
 
     if len(segs) > 1:
@@ -935,61 +929,17 @@ def style_config_mod(cfg,lighten,saturate,thicken):
 ###########################################################################
 # unfinished:
 class RailItem:
-  def __init__(self,l,type,uuid=0):
-    self.l     = l
-    self.type  = type
-    self.uuid  = uuid
-  def length(self):
-    return self.l
-  def setLength(self,l):
-    self.l = l
+  def __init__(self, start, length, uuid, railtype):
+    self.start     = start
+    self.length    = length
+    self.uuid      = uuid
+    self.railtype  = railtype
 class Road(RailItem):
   def __init__(self,l,type):
     super().__init__(l,type)
 class Decoration(RailItem):
   def __init__(self,l,type):
     super().__init__(l,type)
-
-class CurveRails:
-  def __init__(self,cc):
-    self.cc = cc
-    self.rails = []
-    self.railroot = raildefs.getRailRoot("rd/andalusia.raildef")
-    self.types, self.uuids, self.content = raildefs.getRailDict(self.railroot)
-
-    #print("railtypes")
-    #for rt,uuids in self.types.items():
-    #  print(rt,raildefs.RailType(rt),uuids)
-    #  for u in uuids:
-    #    print(self.uuids[u])
-
-    self.setup()
-  def getName(self,ri):
-    return self.railuuids[ri.uuid]
-  def getType(self,ri):
-    return raildefs.RailType(ri.type).name
-  def setup(self):
-    # sb = self.railuuids.find("R04_1_START_BEGIN")
-    # gm = self.railuuids.find("R04_2_START_GOAL_MAIN")
-    # se = self.railuuids.find("R04_3_START_END")
-
-    self.rails.append(Road(0,"START_BEGIN"))
-    self.rails.append(Road(200,"GOAL_MAIN"))
-    self.rails.append(Road(500,"START_END"))
-    self.rails.append(Road(700,"NORMAL"))
-  def addRoad(self,l,type):
-    self.rails.append(Road(l,type))
-  def addDeco(self,l,type):
-    self.rails.append(Decoration(l,type))
-  def typePopup(self,canvas,cb):
-    menu = tk.Menu(self.canvas, tearoff=0, takefocus=0)
-    type = tk.IntVar()
-
-    for rt,uuids in self.types.items():
-      name = raildefs.RailType(rt).name
-      menu.add_radiobutton(label=name,value=rt,variable=type,command=cb)
-    return type,menu
-
 ###########################################################################
 class RailManip(FSM):
   def __init__(self,cc,canvas):
@@ -1020,26 +970,17 @@ class RailManip(FSM):
     }
     super().__init__(s.Idle, tt, self.canvas)
 
-    self.segstyle = {
-      "width"           : 8,
-      "outline"         : "#BEBEBE",
-      "fill"            : "",
-    }
     self.movestyle = {
       "width"           : 0,
       "outline"         : "#9370DB",
       "fill"            : "#9370DB",
-    }
-    self.rotstyle = {
-      "width"           : 8,
-      "outline"         : "#EEDD82",
-      "fill"            : "",
+      "tags"             : "rail"
     }
 
 
-    style_active(self.segstyle,  -0.1, 0,   2)
+    #style_active(self.segstyle,  -0.1, 0,   2)
     style_active(self.movestyle, -0.1, 0.1, 3)
-    style_active(self.rotstyle,  -0.1, 0.1, 3)
+    #style_active(self.rotstyle,  -0.1, 0.1, 3)
 
     self.selstyle = style_modified(self.movestyle,-0.2,0.2,2)
 
@@ -1051,9 +992,9 @@ class RailManip(FSM):
     self.info = EvInfo
     self.info.item = None
 
-    self.cr = CurveRails(self.cc)
+    self.type = tk.StringVar()
 
-  
+    self.cr = None
 
   def addMoveHandle(self, railitem):
     c,t = self.cc.pointAndTangentAt(railitem.l)
@@ -1062,7 +1003,7 @@ class RailManip(FSM):
     tp = c + pt*17.5+t*20
     pts = [c, c+pt*20-t*2.5, c+pt*20+t*15, c+pt*17.5+t*17.5, c+pt*15+t*15, c+pt*15+t*2.5]
     poly = [(p[0],p[1]) for p in pts]
-    cids = [self.canvas.create_polygon(poly, **self.movestyle, tags=self.movetag),
+    cids = [self.canvas.create_polygon(poly,**self.movestyle),
             self.canvas.create_text([tp[0],tp[1]], text=railitem.type, tags=self.movetag)]
     return cids
   def removeHandles(self):
@@ -1070,11 +1011,11 @@ class RailManip(FSM):
   def addHandles(self):
     self.removeHandles()
     self.cp_cidmap = {}
-    for r in self.cr.rails:
-      cids = self.addMoveHandle(r)
-      for cid in cids:
-        self.r_cidmap[cid] = r
-      self.imap[r] = cids
+    #for r in self.cr.rails:
+    #  cids = self.addMoveHandle(r)
+    #  for cid in cids:
+    #    self.r_cidmap[cid] = r
+    #  self.imap[r] = cids
 
   def findClosest(self,ev):
     cx,cy = self.canvas.canvasxy(ev.x, ev.y)
@@ -1086,19 +1027,19 @@ class RailManip(FSM):
     #self.historySave()
     cx,cy,item,ri = self.findClosest(ev)
     print("RailRemove")
-    self.cr.rails.remove(ri)
+    #self.cr.rails.remove(ri)
     self.addHandles()
 
   def onChangeType(self,ev):
     cx,cy,item,ri = self.findClosest(ev)
     self.info.ri = ri
     self.type.set(ri.type)
-    self.info.type, menu = self.cr.typePopup(canvas)
-    #menu = tk.Menu(self.canvas, tearoff=0, takefocus=0)
+    #self.info.type, menu = self.cr.typePopup(canvas)
+    menu = tk.Menu(self.canvas, tearoff=0, takefocus=0)
 
-    #menu.add_radiobutton(label="Normal", value="NORMAL", variable = self.type, command=self.onChangeTypeEnd)
-    #menu.add_radiobutton(label="Runoff Right", value="R_RUNOFF", variable = self.type, command=self.onChangeTypeEnd)
-    #menu.add_radiobutton(label="Runoff Left", value="R_RUNOFF", variable = self.type, command=self.onChangeTypeEnd)
+    menu.add_radiobutton(label="Normal", value="NORMAL", variable = self.type, command=self.onChangeTypeEnd)
+    menu.add_radiobutton(label="Runoff Right", value="R_RUNOFF_RIGHT", variable = self.type, command=self.onChangeTypeEnd)
+    menu.add_radiobutton(label="Runoff Left", value="R_RUNOFF_LEFT", variable = self.type, command=self.onChangeTypeEnd)
 
     menu.tk_popup(ev.x_root, ev.y_root, entry=0)
 
@@ -1164,7 +1105,7 @@ class RailManip(FSM):
     if self.info.item:
       self.canvas.delete(self.info.item)
       self.info.item = None
-    self.cr.addRoad(self.info.l,"NEW_STUFF")
+    #self.cr.addRoad(self.info.l,"NEW_STUFF")
     self.addHandles()
   def historySave(self):
     self.history.append(deepcopy(self.cr)) # save copy of control curve
@@ -1203,7 +1144,7 @@ class CCManip(FSM):
     self.segtag     = "segment"
     self.movetag    = "move"
     self.rottag     = "rot"
-    self.jointtag     = "joint"
+    self.jointtag   = "joint"
 
     s  = Enum("States","Idle Select Insert Append Move Rot SelRot SelScale Limbo")
     tt = {
@@ -1300,21 +1241,25 @@ class CCManip(FSM):
       "width"           : 8,
       "outline"         : "#BEBEBE",
       "fill"            : "",
+      "tags"            : self.segtag
     }
     self.movestyle = {
       "width"           : 8,
       "outline"         : "#B0C4DE",
       "fill"            : "",
+      "tags"            : self.movetag
     }
     self.rotstyle = {
       "width"           : 8,
       "outline"         : "#EEDD82",
       "fill"            : "",
+      "tags"            : self.rottag
     }
     self.jointstyle = {
       "width"           : 1,
       "outline"         : "#EE82DD",
       "fill"            : "#EE82DD",
+      "tags"            : self.jointtag
     }
 
     style_active(self.segstyle,  -0.1, 0,   2)
@@ -1341,9 +1286,7 @@ class CCManip(FSM):
       # TODO: remove nonexisting segments from imap
       self.canvas.delete(self.segtag)
 
-      seg2cid = self.cc.draw(self.canvas,
-                             tag = self.segtag,
-                             **self.segstyle)
+      seg2cid = self.cc.draw(self.canvas,**self.segstyle)
       self.seg_cidmap = {}
       for s,cids in seg2cid.items():
         self.imap[s] = cids
@@ -1355,10 +1298,7 @@ class CCManip(FSM):
           cids = self.imap[a]
           for cid in cids:
             self.canvas.delete(cid)
-        ncids = self.cc.drawSegment(a,
-                                    self.canvas,
-                                    tag = self.segtag,
-                                    **self.segstyle)
+        ncids = self.cc.drawSegment(a, self.canvas, **self.segstyle)
         if ncids is None:
           self.imap.pop(a)
           for cid in cids:
@@ -1376,7 +1316,8 @@ class CCManip(FSM):
 
     self.canvas.itemconfigure(self.lengthdisplay,
                               text="Length: {:.2f}m".format(self.cc.length()))
-  def addJointHandles(self, except_seg=[]):
+  def addJointHandles(self, except_seg=None):
+    if except_seg is None: except_seg = []
     # redraw all joint handles except for segments in except_seg
     for seg,cids in self.jointimap.items():
       if seg in except_seg:
@@ -1391,26 +1332,26 @@ class CCManip(FSM):
         for cid in cids:
           self.joint_cidmap[cid] = seg
           if seg in self.jointimap:
-            self.jointimap[seg].append(cids)
+            self.jointimap[seg].extend(cids)
           else:
-            self.jointimap[seg] = [cids]
+            self.jointimap[seg] = cids
 
   def addRotHandle(self, cp):
     c = cp.point
     t = cp.tangent
     p = c + 35*t
     r = 12
-    cid = canvas_create_circle(self.canvas, p, r, **self.rotstyle, tags=self.rottag)
+    cid = canvas_create_circle(self.canvas, p, r, **self.rotstyle)
     return cid
   def addMoveHandle(self, cp):
     c = cp.point
     r = 12
-    cid = canvas_create_circle(self.canvas, c, r, **self.movestyle, tags=self.movetag)
+    cid = canvas_create_circle(self.canvas, c, r, **self.movestyle)
     return cid
   def addJointHandle(self, seg):
     c = seg.seg.joint()
     r = 3
-    cid = canvas_create_circle(self.canvas, c, r, **self.jointstyle, tags=self.jointtag)
+    cid = canvas_create_circle(self.canvas, c, r, **self.jointstyle)
     return cid
   def removeHandles(self):
     self.canvas.delete(self.movetag)

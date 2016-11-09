@@ -110,7 +110,7 @@ def vector(p0, p1):
 
 # homogenous vector from point p with weight w
 def hom(p,w):
-  return np.array((*(p*w if w else p),w))
+  return np.array([c*w for c in p] + [w]) if w else np.array([c for c in p] + [w])
 # projection of homogenous vector
 def proj(h):
   return np.array([h[i]/h[-1] if h[-1] else h[i] for i in range(0,len(h)-1)])
