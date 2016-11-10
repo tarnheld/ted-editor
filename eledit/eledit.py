@@ -310,12 +310,12 @@ class ElevationEditor(tk.Frame):
         self.bind_class("brusharea", '<Shift-Control-MouseWheel>', self.ShiftControlMouseWheel)
         self.bind_class("brusharea", '<ButtonPress-3>', self.Button3Press)
         self.bind_class("brusharea", '<B3-Motion>', self.MouseScroll)
-        self.bind_class("all", 'f', self.FButtonPress)
-        self.bind_class("all", 's', self.SButtonPress)
-        self.bind_class("all", 'z', self.zkey)
-        self.bind_class("all", '<Alt-z>', self.altzkey)
-        self.bind_class("all", '<Control-z>', self._undo)
-        self.bind_class("all", '<Control-x>', self._undo)
+        self.bind('f', self.FButtonPress)
+        self.bind('s', self.SButtonPress)
+        self.bind('z', self.zkey)
+        self.bind('<Alt-z>', self.altzkey)
+        self.bind('<Control-z>', self._undo)
+        self.bind('<Control-y>', self._undo)
         self.bind('<Configure>', self._my_configure)
 
         # create brushes and mouselabel
@@ -419,7 +419,7 @@ class ElevationEditor(tk.Frame):
 
     def _undo(self, event = None, arg="undo"):
         if event != None:
-            if event.keysym == 'x':
+            if not event.keysym == 'z':
                 arg = "redo"
         if arg == "undo":
             try:            

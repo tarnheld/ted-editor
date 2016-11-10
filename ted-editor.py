@@ -927,6 +927,32 @@ def style_config_mod(cfg,lighten,saturate,thicken):
     style["width"] = float(cfg["width"][4]) + thicken
   return style
 
+###########################################################################
+# helper class for text popups
+class PopupEntry(tk.Toplevel):
+  def __init__(self, master, pos, desc, cb, title=None):
+    super().__init__(master)
+    self.cb = cb
+    
+    self.transient(master)
+    if title:
+      self.title(title)
+    self.geometry("+%d+%d" % (master.winfo_rootx()+pos[0],
+                                master.winfo_rooty()+pos[1]))
+    self.l = tk.Label(self, text = desc)
+    self.l.pack()
+    self.e = tk.Entry(self)
+    self.e.pack()
+    self.initial_focus = self.e
+    self.b = tk.Button(self, text = 'Ok', command = self.cleanup)
+    self.b.pack()
+
+    self.e.bind("<Return>",self.cleanup)
+    self.e.focus_set()
+  def cleanup(self,ev=None):
+    value = self.e.get()
+    self.destroy()
+    self.cb(value)
 
 ###########################################################################
 # unfinished:
@@ -1134,7 +1160,6 @@ class RailManip(FSM):
       self.restore()
 
     print("Redo", len(self.future),len(self.history))
-
 ###########################################################################
 class CCManip(FSM):
   def __init__(self,cc,canvas):
@@ -1188,8 +1213,6 @@ class CCManip(FSM):
       # extra state to consume button press and button release of double click
       (s.Limbo,   None,  "<ButtonRelease-1>")    : (s.Idle, None),
 
-      # reverse track
-      (s.Idle,   None, "<Key-r>")                : (s.Idle,   self.onReverse),
 
       # selection bindings
       (s.Idle  , None,  "<ButtonPress-3>")       : (s.Select, self.onSelectionStart),
@@ -1207,6 +1230,9 @@ class CCManip(FSM):
       (s.Select, "move","<Control-Button-1>")    : (s.Select, self.onSelectionToggle),
       (s.Select, None,  "<Key-s>")               : (s.Idle,   None),
 
+      # select all
+      (s.Idle,   None,   "<Control-Key-a>")      : (s.Idle,   self.onSelectAll),
+
       # selection rotation and scale bindings
       (s.Idle,   None,  "<Shift-ButtonPress-1>") : (s.SelRot,  self.onSelRotStart),
       (s.SelRot, None,  "<Shift-B1-Motion>")     : (s.SelRot,  self.onSelRotUpdate),
@@ -1216,12 +1242,16 @@ class CCManip(FSM):
       (s.SelScale, None,  "<Control-B1-Motion>") : (s.SelScale, self.onSelScaleUpdate),
       (s.SelScale, None,  "<ButtonRelease-1>")   : (s.Idle,     self.onSelRotEnd),
 
+      (s.Idle,   None,  "<Key-l>")               : (s.Idle, self.onScaleLengthPopup),
+
       # undo bindings
       (s.Idle,   None,   "<Control-Key-z>")      : (s.Idle,   self.onUndo),
-      (s.Idle,   None,   "<Control-Key-r>")      : (s.Idle,   self.onRedo),
-
+      (s.Idle,   None,   "<Control-Key-y>")      : (s.Idle,   self.onRedo),
+     
       # toggle open bindings
       (s.Idle,   None,   "<Key-o>")              : (s.Idle,   self.onToggleOpen),
+      # reverse track
+      (s.Idle,   None,   "<Key-r>")              : (s.Idle,   self.onReverse),
     }
     super().__init__(s.Idle, tt, self.canvas)
 
@@ -1503,6 +1533,31 @@ class CCManip(FSM):
       self.selection.add(cp)
 
     self.redrawSelection()
+
+  def onSelectAll(self,ev):
+    if len(self.selection) == len(self.cc.point):
+      self.selection.clear()
+    else:
+      self.selection = set(self.cc.point)
+    self.redrawSelection()
+  def onScaleLengthPopup(self,ev):
+    print("onScaleLengthPopup")
+    self.pe = PopupEntry(self.canvas.master,(ev.x,ev.y),"Enter new Length:",self.onScaleLengthPopupDone)
+    sys.stdout.flush()
+  def onScaleLengthPopupDone(self,length):
+    print("onScaleLengthPopupDone",length)
+    desired_length = float(length)
+    self.historySave()
+    scale = desired_length/self.cc.length()
+    bbox = self.canvas.bbox("segment")
+    mx = abs(bbox[0]-bbox[2])
+    my = abs(bbox[1]-bbox[3])
+    scale_origin = (mx,my) # point that stays fixed while scaling
+    xform = la.identity()
+    xform = la.mul(xform,la.translate(scale_origin[0],scale_origin[1]))
+    xform = la.mul(xform,la.scale(scale,scale,scale))
+    xform = la.mul(xform,la.translate(-scale_origin[0],-scale_origin[1]))
+    self.applySelXForm(xform)
   def onMoveStart(self,ev):
     cx,cy,self.info.item = self.findClosest(ev)
     self.info.prev = la.coords(cx,cy)
