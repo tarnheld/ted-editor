@@ -21,6 +21,8 @@ import read_ted as ted
 
 import raildefs
 
+sys.path.append("eledit")
+import eledit as eed 
 
 
 ##############################################################################
@@ -2322,12 +2324,11 @@ class App(tk.Frame):
                  'mod': mod, 'tail': '', 'tokens' : []}
 
     structure = make_tokens(structure)
-  
-    from eledit import eledit as eed 
+
     if not self.elevwindow:
       self.elevwindow = tk.Toplevel(self.master)
-      self.eleveditor = eed.SampleApp(self.elevwindow,self)
-      self.eleveditor.extract_structure(structure)
+      self.eleveditor = eed.ElevationEditor(self.elevwindow,self)
+      self.eleveditor.extract(structure)
       self.elevwindow.protocol("WM_DELETE_WINDOW",self.onElevationClose)
       self.ccmanip.stop()
       self.ccmanip.removeHandles()

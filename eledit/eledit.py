@@ -1,11 +1,121 @@
 import tkinter as tk
-import eledit.transformations as tf
-import eledit.readfile as rf
+import transformations as tf
+import readfile as rf
 from bisect import bisect_left
 
 from random import randint
 
-class SampleApp(tk.Frame):
+class ContrastDialog:
+
+    def __init__(self, parent):
+
+        top = self.top = tk.Toplevel(parent)
+        self.ElevationEditor = parent
+
+        tk.Label(top, text='Contrast factor (0 to flatten)').grid(sticky="w")
+
+        self.e = tk.Entry(top)
+        self.e.grid(sticky="we", padx=5)
+        self.e.focus()
+
+        b = tk.Button(top, text='OK', command=self.ok)
+        b.grid(sticky="we", pady=5)
+
+    def ok(self):
+        try:
+            z = float(self.e.get())
+        except:
+            z = 0
+        self.ElevationEditor._contrast(z)   
+        self.top.destroy()
+
+class RoughenDialog:
+
+    def __init__(self, parent):
+
+        top = self.top = tk.Toplevel(parent)
+        self.ElevationEditor = parent
+
+        self.entries = [['Potencia (float)', tk.StringVar(value='4.0')],
+                   ['Magnitude (float)', tk.StringVar(value='0.02')],
+                   ['Variation (int)', tk.StringVar(value='100')]]
+
+        for entry in self.entries:
+            tk.Label(top, text=entry[0]).grid(sticky='w')
+            e = tk.Entry(top, textvariable = entry[1])
+            e.grid(sticky="we", padx=5)
+
+        b = tk.Button(top, text='OK', command=self.ok)
+        b.grid(sticky="we", pady=5)
+        top.focus_set()
+
+    def ok(self):
+        e = self.entries
+        try:
+            pot = float(e[0][1].get())
+            mag = float(e[1][1].get())
+            var = int(e[2][1].get())
+            self.ElevationEditor._roughen(pot, mag, var)
+        except:
+            print('Exception raised.')
+        self.top.destroy()
+
+class SmoothenDialog:
+
+    def __init__(self, parent):
+
+        top = self.top = tk.Toplevel(parent)
+        self.ElevationEditor = parent
+
+        self.entries = [['Delta slope tolerance (float)', tk.StringVar(value='0.05')],
+                   ['Min segment length (int)', tk.StringVar(value='6')],
+                   ['Max segment length (int)', tk.StringVar(value='60')]]
+
+        for entry in self.entries:
+            tk.Label(top, text=entry[0]).grid(sticky='w')
+            e = tk.Entry(top, textvariable = entry[1])
+            e.grid(sticky="we", padx=5)
+
+        b = tk.Button(top, text='OK', command=self.ok)
+        b.grid(sticky="we", pady=5)
+        top.focus_set()
+
+    def ok(self):
+        e = self.entries
+        try:
+            tol = float(e[0][1].get())
+            minL = int(e[1][1].get())
+            maxL = int(e[2][1].get())
+            self.ElevationEditor._smoothen(tol, minL, maxL)
+        except:
+            print('Exception raised.')
+        self.top.destroy()
+
+class TranslateDialog:
+
+    def __init__(self, parent):
+
+        top = self.top = tk.Toplevel(parent)
+        self.ElevationEditor = parent
+
+        tk.Label(top, text='Raise by (m)').grid(sticky="w")
+
+        self.e = tk.Entry(top)
+        self.e.grid(sticky="we", padx=5)
+        self.e.focus()
+
+        b = tk.Button(top, text='OK', command=self.ok)
+        b.grid(sticky="we", pady=5)
+
+    def ok(self):
+        try:
+            z = float(self.e.get())
+        except:
+            z = 0
+        self.ElevationEditor._translate(z)   
+        self.top.destroy()
+
+class ElevationEditor(tk.Frame):
     '''Illustrate how to drag items on a Tkinter canvas'''
 
     def __init__(self, master, trackapp=None, tokenlist=None, *args, **kwargs):
@@ -13,6 +123,14 @@ class SampleApp(tk.Frame):
         self.pack(side=tk.LEFT,expand=True,fill=tk.BOTH)
         self.trackapp = trackapp
         
+
+        # app title
+        version = "1.0.9"
+        self.master.title("Elevation Editor v."+ version)
+
+        new_tags = self.bindtags() + ("all",)
+        self.bindtags(new_tags)
+
         # this data is used to keep track of an 
         # item being dragged
         self._drag_data = {"x": 0, "y": 0, "items": [], "feather": []}
@@ -21,12 +139,15 @@ class SampleApp(tk.Frame):
         self._mouselabel = {"x_coord": 0, "y_coord": 0}
         self._mousepos = {'x': 0, 'y': 0}
         self._widgetsize = (None, None)
+        self._past = []
+        self._future = []
         
         # set offset, scales
         self._high_x = 0
         self._high_y = 0
         self._low_x = 0
         self._low_y = 0
+        self._first_y = 0
         self._brush_offset = self._high_x - self._low_x
         self._y_scale = -5.0
         self._x_scale = 1.0
@@ -47,10 +168,6 @@ class SampleApp(tk.Frame):
 
 
         ### MENUS ###
-
-        # app title
-        version = "1.0.7b"
-        self.master.title("Elevation Editor v."+ version)
         
         # create a toplevel menu and a frame
         self.menubar = tk.Menu(self)
@@ -65,6 +182,9 @@ class SampleApp(tk.Frame):
         
         #create pulldown edit menu
         editmenu = tk.Menu(self.menubar, tearoff = 0)
+        editmenu.add_command(label="Undo", command = self._undo)
+        editmenu.add_command(label="Redo", command = lambda: self._undo(arg="redo"))
+        editmenu.add_separator()
 
         #feather submenu
         feathermenu = tk.Menu(editmenu, tearoff = 0)
@@ -76,9 +196,10 @@ class SampleApp(tk.Frame):
      
         #transform submenu
         transformmenu = tk.Menu(editmenu, tearoff = 0)
-        transformmenu.add_command(label="Roughen", command=self._roughen)
-        transformmenu.add_command(label="Smoothen", command=self._smoothen)
-        transformmenu.add_command(label="Flatten", command =self._flatten)
+        transformmenu.add_command(label="Contrast", command =self._contrastDialog)
+        transformmenu.add_command(label="Roughen", command=self._roughenDialog)
+        transformmenu.add_command(label="Smoothen", command=self._smoothenDialog)      
+        transformmenu.add_command(label="Translate", command =self._translateDialog)
         editmenu.add_cascade(label="Transform", menu = transformmenu)
         
         self.menubar.add_cascade(label="Edit", menu = editmenu)
@@ -100,52 +221,68 @@ class SampleApp(tk.Frame):
         c.create_text(15, 10, anchor="nw", text = _labels)
         c.create_text(180, 10, anchor="ne", text=_text, justify="right", tags = "mouselabel")
         self._brush_data['canvas'] = c
-        l.grid(row=0, padx=5)
+        l.grid(row=0, padx=5, pady=5, sticky="we")
         c.grid(row=0)
-        
 
+        #add radiobuttons for feather options
+        rframe = tk.Frame(l)
+        rframe.grid(sticky='w')
+        for i, item in enumerate(['Wave', 'Linear', 'Bowl', 'Plateau']):
+            rb = tk.Radiobutton(rframe, text=item, variable=self._feathermode, value=i)
+            rb.grid(row=i//2, column=i%2, padx=2, pady=2, sticky='w')
+
+        # create transformations buttons
+        l = tk.LabelFrame(self.leftPanel, text = "Transform")
+        buttons = [('Contrast', self._contrastDialog),
+                   ('Roughen', self._roughenDialog),
+                   ('Smoothen', self._smoothenDialog),
+                   ('Translate', self._translateDialog)]
+
+        for button in buttons:
+            b = tk.Button(l, text=button[0], command = button[1])
+            b.grid(padx=5, pady=2, sticky="we")
+        l.grid(padx=5, pady=5, ipady=2, sticky="we")
+
+        # create instructions panel
+        l = tk.LabelFrame(self.leftPanel, text = "Commands")
+
+        messages = ('Use brush: click + drag',
+                    'Brush radius: mousewheel',
+                    'Feather radius: ctrl + mousewheel',
+                    'Panning: right-click + drag',
+                    'Small incr. modifier: shift + [cmd]',
+                    'Flatten section: F',
+                    'Smoothen section: S',
+                    'Zoom in: Z',
+                    'Zoom out: alt + Z',
+                    'Undo: ctrl + Z',
+                    'Redo: ctrl + X')
+
+        for message in messages:
+            tk.Label(l, text = message, wraplength=200, anchor='w', justify='left').grid(sticky='we', padx=2)
+
+        l.grid(padx=5, pady=5, ipady=2, sticky="we")
+        
         ### CREATE CANVASES ###
 
         c_width = 600
 
         # create a token canvas
         self.canvas = tk.Canvas(self, width=c_width, bg = can_bg, height=400, bd=1, relief = "groove")
-        new_tags = self.canvas.bindtags() + ("brusharea",)
+        new_tags = self.canvas.bindtags() + ("brusharea", "all")
         self.canvas.bindtags(new_tags)
 
         #create a graph canvas
         self.graphCanvas = tk.Canvas(self, width=c_width, bg = gCan_bg, height = 200, bd=1, relief = "groove")
         
-        new_tags = self.graphCanvas.bindtags() + ("brusharea",)
+        new_tags = self.graphCanvas.bindtags() + ("brusharea", "all")
         self.graphCanvas.bindtags(new_tags)
-
-        # add bindings
-        self.bind_class("brusharea", "<ButtonPress-1>", self.OnTokenButtonPress)
-        self.bind_class("brusharea", "<ButtonRelease-1>", self.OnTokenButtonRelease)
-        self.bind_class("brusharea", "<B1-Motion>", self.OnTokenMotion)
-        self.bind_class("brusharea", "<Shift-B1-Motion>", self.ShiftOnTokenMotion)
-        self.bind_class("brusharea", "<Motion>", self.OnMotion)
-        self.bind_class("brusharea", '<MouseWheel>', self.MouseWheel)
-        self.bind_class("brusharea", '<Shift-MouseWheel>', self.ShiftMouseWheel)
-        self.bind_class("brusharea", '<Control-MouseWheel>', self.ControlMouseWheel)
-        self.bind_class("brusharea", '<Shift-Control-MouseWheel>', self.ShiftControlMouseWheel)
-        self.bind_class("brusharea", '<ButtonPress-3>', self.Button3Press)
-        self.bind_class("brusharea", '<B3-Motion>', self.MouseScroll)
-        self.bind('f', self.FButtonPress)
-        self.bind('s', self.SButtonPress)
-        self.bind('z', self.zkey)
-        self.bind('<Alt-z>', self.altzkey)
-        self.bind('<Configure>', self._my_configure)
-
-        # create brushes and mouselabel
-        self._create_brush(self._brush_data['x'])   
-     
 
         ### SCROLLBARS ###
 
         #add scrollbars
         self.hbar = tk.Scrollbar(self, orient="horizontal", command=self.xview)
-        self.vbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.vbar = tk.Scrollbar(self, orient="vertical", command=self.yview)
         self.canvas.config(xscrollcommand = self.hbar.set, yscrollcommand = self.vbar.set)
 
         #add scalebar
@@ -161,9 +298,33 @@ class SampleApp(tk.Frame):
         self.c_vruler = tk.Canvas(self, width=self.r_width, height=15, bd=1) #canvas
         self.g_vruler = tk.Canvas(self, width=self.r_width, height=15, bd=1) #graph
 
+        # add bindings
+        self.bind_class("brusharea", "<ButtonPress-1>", self.OnTokenButtonPress)
+        self.bind_class("brusharea", "<ButtonRelease-1>", self.OnTokenButtonRelease)
+        self.bind_class("brusharea", "<B1-Motion>", self.OnTokenMotion)
+        self.bind_class("brusharea", "<Shift-B1-Motion>", self.ShiftOnTokenMotion)
+        self.bind_class("brusharea", "<Motion>", self.OnMotion)
+        self.bind_class("brusharea", '<MouseWheel>', self.MouseWheel)
+        self.bind_class("brusharea", '<Shift-MouseWheel>', self.ShiftMouseWheel)
+        self.bind_class("brusharea", '<Control-MouseWheel>', self.ControlMouseWheel)
+        self.bind_class("brusharea", '<Shift-Control-MouseWheel>', self.ShiftControlMouseWheel)
+        self.bind_class("brusharea", '<ButtonPress-3>', self.Button3Press)
+        self.bind_class("brusharea", '<B3-Motion>', self.MouseScroll)
+        self.bind_class("all", 'f', self.FButtonPress)
+        self.bind_class("all", 's', self.SButtonPress)
+        self.bind_class("all", 'z', self.zkey)
+        self.bind_class("all", '<Alt-z>', self.altzkey)
+        self.bind_class("all", '<Control-z>', self._undo)
+        self.bind_class("all", '<Control-x>', self._undo)
+        self.bind('<Configure>', self._my_configure)
+
+        # create brushes and mouselabel
+        self._create_brush(self._brush_data['x'])   
+     
+
         ### GEOMETRY MANAGEMENT ###
         
-        self.leftPanel.grid(row=0, column=0, sticky="NS")
+        self.leftPanel.grid(row=0, column=0, rowspan=3, sticky="NS")
         self.canvas.grid(row=0, column=2, sticky = "WENS")
         self.graphCanvas.grid(row=2, column=2, sticky = "WE")
         self.hbar.grid(row=3, column=2, sticky = "WE")
@@ -178,11 +339,12 @@ class SampleApp(tk.Frame):
 
         self.update_idletasks()
         self.focus_set()
-        self.master.columnconfigure(2, weight=1)
-        self.master.rowconfigure(0, weight=1)
-       
+        self.columnconfigure(2, weight=1)
+        self.rowconfigure(0, weight=1)
     def delete_old(self):       
         #delete any old tokens and origins
+        self._past = []
+        self._future = []
         tokens = self.canvas.find_withtag("token")
         for token in tokens:
             self.canvas.delete(token)
@@ -191,7 +353,7 @@ class SampleApp(tk.Frame):
         for origin in origins:
             self.canvas.delete(origin)
 
-    def extract_structure(self, structure):
+    def extract(self, structure):
         def _create_origin(self, tokenlist):
             prev_xy = None            
             for index, token in enumerate(tokenlist):
@@ -201,8 +363,7 @@ class SampleApp(tk.Frame):
                 if prev_xy != None:
                     self.canvas.create_line(prev_xy[0], prev_xy[1], x, y,
                                             fill = self.c_gridFill, width = self.line_width, tags="origin")
-                    prev_xy = (x, y)
-
+                prev_xy = (x, y)
         def _create_token(self, coord, color):
             '''Create a token at the given coordinate in the given color'''
             (x,y) = coord
@@ -210,10 +371,11 @@ class SampleApp(tk.Frame):
             token = self.canvas.create_rectangle(x, y, x, y, 
                                                  outline=color, width=1, fill=color, tags="token")
             self._tokens.append(token)
-            
+                        
+                
         self.structure = s = structure
         tokenlist = s['tokens']
-        
+
         #find highest and lowest x, y in tokens
         self._find_xy(tokenlist)
         
@@ -238,24 +400,62 @@ class SampleApp(tk.Frame):
         # position brush
         self.brushChange(x = self.canvas.canvasx(0))
         self._brush_data['x'] = self.canvas.canvasx(0)
-        
+
     def _load_ted(self):
         #load a .ted file
         structure = rf.load_struct()
         if structure != None:
             self.delete_old()
-            self.extract_structure(structure)
-
+            self.extract(structure)
     def get_heightlist(self):
         tokenlist = self._gen_tokenlist()
         return [token[1]-(self._first_y/self._y_scale) for token in tokenlist]
     def update_structure(self):
         self.structure['mod'] = self.get_heightlist()
         return self.structure
-    
     def _export_ted(self):
         self.update_structure()
         rf.export_struct(self.structure)
+
+    def _undo(self, event = None, arg="undo"):
+        if event != None:
+            if event.keysym == 'x':
+                arg = "redo"
+        if arg == "undo":
+            try:            
+                heightslist = self._past.pop()
+                self._appendToHistory("future")
+            except IndexError:
+                heightslist = None
+        else:
+            try:           
+                heightslist = self._future.pop()
+                self._appendToHistory()
+            except IndexError:
+                heightslist = None
+        if heightslist != None:
+            c = self.canvas
+            s = self._y_scale
+            tokens = c.find_withtag("token")
+            for i, token in enumerate(tokens):
+                x, z = heightslist[i][0:2]
+                c.coords(token, x, z*s, x, z*s)
+            self._scrollregion()
+
+    def _appendToHistory(self, arg="past"):
+        if arg == "past":
+            heightslist = self._past
+        else:
+            heightslist = self._future
+        c = self.canvas
+        s = self._y_scale
+        tokens = c.find_withtag("token")
+        h = []
+        for token in tokens:
+            x, z = c.coords(token)[0:2]
+            h.append((x, z/s))
+        heightslist.append(h)
+        
 
     def _draw_slope_guides(self):
 
@@ -470,6 +670,8 @@ class SampleApp(tk.Frame):
     def OnTokenButtonPress(self, event):
         '''Begin drag of an object'''
         # record the item and its location
+        self._appendToHistory()
+        self._future = []
         x = self.canvas.canvasx(event.x)
         y0 = self.canvas.canvasy(-10000)
         y1 = self.canvas.canvasy(10000)
@@ -526,42 +728,72 @@ class SampleApp(tk.Frame):
         '''Handle shift-dragging of an object'''
         self.OnTokenMotion(event, factor=0.1)
 
-    def _roughen(self):
-        '''Apply small random elevation changes to all height points'''
-        potenza = 4
-        scale = 0.02*self._y_scale
-        v = variation = 100
+    def _contrastDialog(self):
+        dialog = ContrastDialog(self)
+        self.wait_window(dialog.top)
+
+    def _contrast(self, weight=0):
+        '''Scale all height points'''
+        self._appendToHistory()
+        self._future = []
         for item in self.canvas.find_withtag('token'):
-            delta_y = ((randint(0, v)/v)**potenza)*scale
+            x, z = self.canvas.coords(item)[0:2]
+            z *= weight
+            self.canvas.coords(item, x, z, x, z)
+        #draw slope
+        self._scrollregion()
+
+    def _roughenDialog(self):
+        dialog = RoughenDialog(self)
+        self.wait_window(dialog.top)
+        
+    def _roughen(self, potencia = 4, magnitude = 0.02, variation = 100):
+        '''Apply small random elevation changes to all height points'''
+        self._appendToHistory()
+        self._future = []
+        scale = magnitude*self._y_scale
+        v = variation
+        for item in self.canvas.find_withtag('token'):
+            delta_y = ((randint(0, v)/v)**potencia)*scale
             neg = randint(0, 1)
             if neg:
                 delta_y*=-neg
             self.canvas.move(item, 0, delta_y)
         #draw slope
-        self._find_slope()
+        self._scrollregion()
 
-    def _smoothen(self):
+    def _smoothenDialog(self):
+        dialog = SmoothenDialog(self)
+        self.wait_window(dialog.top)
+        
+    def _smoothen(self, tol=0.04, minL=6, maxL=100):
         '''Apply a smoothening algorithm to all height points'''
-        heightsList = []
-        for item in self.canvas.find_withtag('token'):
-            heightsList.append(self.canvas.coords(item)[0:2])
+        self._appendToHistory()
+        self._future = []
+        c = self.canvas
+        heightsList = [c.coords(i)[0:2] for i in c.find_withtag('token')]
 
-        rounded = tf.smoothen(heightsList)
-        for item in self.canvas.find_withtag('token'):
-            coords = rounded.pop(0)
-            x = coords[0]
-            y = coords[1]
-            self.canvas.coords(item, x, y, x, y)
+        rounded = tf.smoothen(heightsList, tol, minL, maxL)
+        for item in c.find_withtag('token'):
+            x, z = rounded.pop(0)[0:2]
+            c.coords(item, x, z, x, z)
         #draw slope
-        self._find_slope()
+        self._scrollregion()
 
-    def _flatten(self):
-        y = 0
+    def _translateDialog(self):
+        dialog = TranslateDialog(self)
+        self.wait_window(dialog.top)
+
+    def _translate(self, z=0):
+        '''Translate all heightpoints along z axis'''
+        self._appendToHistory()
+        self._future = []
         for item in self.canvas.find_withtag('token'):
-            x = self.canvas.coords(item)[0]
-            self.canvas.coords(item, x, y, x, y)
+            delta_z = z*self._y_scale
+            self.canvas.move(item, 0, delta_z)
         #draw slope
-        self._find_slope()
+        self._scrollregion()
+        
 
     def brushChange(self, x=None, r=None, f=None):
         if r == None:
@@ -615,7 +847,6 @@ class SampleApp(tk.Frame):
         self.MouseLabelChange(event)
         if self.trackapp:
             self.trackapp.drawTrackIndicator(self.canvas.canvasx(event.x)/self._x_scale)
-        
     def MouseWheel(self, event, mode = 'brush', step=8):
         '''change brush / feather radius'''
         r = self._brush_data[mode]
@@ -664,7 +895,9 @@ class SampleApp(tk.Frame):
         self._drag_data['items'] = temp_list
 
     def FButtonPress(self, event):
-        '''Select objects'''
+        '''Flatten section covered by brush'''
+        self._appendToHistory()
+        self._future = []
         self.get_drag_data()
         
         '''Transformation'''
@@ -692,6 +925,8 @@ class SampleApp(tk.Frame):
             return item
         
         '''Select objects'''
+        self._appendToHistory()
+        self._future = []
         self.get_drag_data()
 
         '''Transformation'''
@@ -763,12 +998,12 @@ class SampleApp(tk.Frame):
 
     def xview(self, *args):
         self.canvas.xview(*args)
+        self.hruler.xview(*args)
         self.graphCanvas.xview(*args)
 
     def yview(self, *args):
         self.canvas.yview(*args)
-        # draw slope
-        self._find_slope()
+        self.c_vruler.yview(*args)
 
     def _find_xy(self, tokenlist=None):
         '''Find highest and lowest x and y in tokens'''
@@ -833,5 +1068,5 @@ class SampleApp(tk.Frame):
 if __name__ == "__main__":
     root = tk.Tk()
     #token_list = [(i*0.9, 0) for i in range(10, 1000, 7)]
-    app = SampleApp(root)  
+    app = ElevationEditor(root)  
     app.mainloop()

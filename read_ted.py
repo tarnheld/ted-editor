@@ -175,7 +175,6 @@ def ted_data_to_tuple_list(name,fmt,data,offset,count):
         t = namedtuple(name,members)._make(struct.unpack_from(spec, data, offset + c*sz))
         lst.append(t)
     return lst
-
 def tuple_to_ted_data(tpl,fmt,data,offset):
     spec, members = fmt_to_spec_and_fields(fmt)
     spec = ">" + spec
