@@ -1223,12 +1223,12 @@ class CCManip(FSM):
       (s.Select, "move","<ButtonRelease-3>")     : (s.Idle,  None),
       
       # alternative selection mode for non-3-button mouses
-      (s.Idle,   None,  "<Key-s>")               : (s.Select, None),
+      (s.Idle,   None,  "<Shift-Key-s>")         : (s.Select, None),
       (s.Select, None,  "<ButtonPress-1>")       : (s.Select, self.onSelectionStart),
       (s.Select, None,  "<B1-Motion>")           : (s.Select, self.onSelectionUpdate),
       (s.Select, None,  "<ButtonRelease-1>")     : (s.Select, self.onSelectionEnd),
       (s.Select, "move","<Control-Button-1>")    : (s.Select, self.onSelectionToggle),
-      (s.Select, None,  "<Key-s>")               : (s.Idle,   None),
+      (s.Select, None,  "<Shift-Key-s>")         : (s.Idle,   None),
 
       # select all
       (s.Idle,   None,   "<Control-Key-a>")      : (s.Idle,   self.onSelectAll),
@@ -2276,7 +2276,7 @@ class App(tk.Frame):
 
     self.canvas.bind("<ButtonPress-2>", self.onDragStart)
     self.canvas.bind("<ButtonRelease-2>", self.onDragEnd)
-    self.canvas.bind("<Key-d>", self.onDragToggle)
+    self.canvas.bind("<Shift-Key-d>", self.onDragToggle)
     self.canvas.bind("<MouseWheel>", self.onWheel)
     self.canvas.bind("<Motion>", self.onDrag)
     self.canvas.bind("<Key-m>", self.onToggleManip)
