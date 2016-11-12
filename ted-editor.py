@@ -459,7 +459,7 @@ class CCSegment:
   def set_heights(self,heights):
     self.heights = heights
     self.heights_need_update = False
-    print("seg height update!")
+    #print("seg height update!")
     sys.stdout.flush()
   def calc_heights(self):
     def heightAt(p,ex,hme,hmw,hmh):
@@ -484,7 +484,7 @@ class CCSegment:
         hgts.append(hs * (div - d)/div + he * d/div)
       self.heights[j] = hgts
       hs = he
-    print("seg height calc!")
+    #print("seg height calc!")
     sys.stdout.flush()
     self.heights_need_update = False
     #exhgts = hgts[-6:-1] + hgts + hgts[0:6]
@@ -794,26 +794,22 @@ class ControlCurve:
       newseg = CCSegment(cp,pe,*args)
       si = self.segment.index(seg)
 
-    self.point.insert(si+1, cp)
-    self.segment.insert(si, newseg)
+    self.point.insert(si+2, cp)
+    self.segment.insert(si+1, newseg)
 
     aff = self.__setupSeg(newseg)
-    #print(len(aff))
-    #for a in aff:
-    #  print("  ",a.type,a.ps.point,a.pe.point, self.tangentUpdateable(a.pe),self.tangentUpdateable(a.ps))
-    #sys.stdout.flush()
 
     return cp,newseg,aff
   def appendPoint(self,p,*args):
     return self.insertPoint(None,p,*args)
   def removePoint(self,cp):
     if cp is self.point[0] or cp is self.point[1]:
-      return [] # don't remove first point
+      return [] # don't remove first point or segment
+    
     segs = self.__segmentsof(cp)
 
     if len(segs) > 1:
       segs[1].ps = segs[0].ps
-      segs[1].pe.tangent = None
 
     self.point.remove(cp)
     self.segment.remove(segs[0])
@@ -822,6 +818,7 @@ class ControlCurve:
     if len(segs) > 1:
       aff = self.__setupSeg(segs[1])
 
+    # add removed segs[0] to clear canvas items in redraw
     return [segs[0]] + aff
   def reverse(self):
     #reverse lists and reset start to old point 1 and segment 0
@@ -835,14 +832,14 @@ class ControlCurve:
     # reverse tangents
     for p in self.point:
       p.tangent = -p.tangent
-      print("point",p.point,p.tangent)
+      #print("point",p.point,p.tangent)
 
     # reverse start and end points in segments
     for s in self.segment:
       s.reverse()
-      print("segment",s.type,s.ps.point,s.pe.point)
+      #print("segment",s.type,s.ps.point,s.pe.point)
 
-    print(self.pointAt(0))
+    #print(self.pointAt(0))
 
     return self.segment # all are affected
 
@@ -1054,7 +1051,7 @@ class RailManip(FSM):
   def onRailRemove(self,ev):
     #self.historySave()
     cx,cy,item,ri = self.findClosest(ev)
-    print("RailRemove")
+    #print("RailRemove")
     #self.cr.rails.remove(ri)
     self.addHandles()
 
@@ -1072,7 +1069,7 @@ class RailManip(FSM):
     menu.tk_popup(ev.x_root, ev.y_root, entry=0)
 
   def onChangeTypeEnd(self):
-    print("new type",self.type.get())
+    #print("new type",self.type.get())
     self.info.ri.type =  self.type.get()
     self.addHandles()
 
@@ -1541,11 +1538,11 @@ class CCManip(FSM):
       self.selection = set(self.cc.point)
     self.redrawSelection()
   def onScaleLengthPopup(self,ev):
-    print("onScaleLengthPopup")
+    #print("onScaleLengthPopup")
     self.pe = PopupEntry(self.canvas.master,(ev.x,ev.y),"Enter new Length:",self.onScaleLengthPopupDone)
-    sys.stdout.flush()
+    #sys.stdout.flush()
   def onScaleLengthPopupDone(self,length):
-    print("onScaleLengthPopupDone",length)
+    #print("onScaleLengthPopupDone",length)
     desired_length = float(length)
     self.historySave()
     scale = desired_length/self.cc.length()
@@ -2065,6 +2062,7 @@ class App(tk.Frame):
     if self.hdr.is_loop and self.cc.isOpen:
       self.cc.segment[-1].pe = self.cc.segment[0].ps
       self.cc.point.pop() # remove duplicated last point
+      self.cc.isOpen = False
     # rebuild
     for s in self.cc.segment: # quick fix for setup update madness while importing
       s.heights_need_update = False
@@ -2120,7 +2118,7 @@ class App(tk.Frame):
                            total_divisions = total_div,
                            vstart = total_l,
                            vlen = l))
-        print("seg",l,div,total_div,l,total_l)
+        #print("seg",l,div,total_div,l,total_l)
         total_l   += l
         total_div += bdiv
         total_heights.extend(hgts)
@@ -2253,6 +2251,7 @@ class App(tk.Frame):
     filemenu.add_separator()
     filemenu.add_command(label="Quit", command = self.quit)
     self.menubar.add_cascade(label="File", menu = filemenu)
+    
     self.master.config(menu = self.menubar)
 
     self.canvas = CX.CanvasX(self,width=800,height=600)
