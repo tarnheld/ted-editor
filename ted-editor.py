@@ -439,8 +439,8 @@ class CCSegment:
       self.np  = 32
     self.poly = offsetPolygon(self.seg,0,1,-self.width/2,self.width/2,self.np)
     self.heights_need_update = True
-    print("seg setup update!")
-    sys.stdout.flush()
+    #print("seg setup update!")
+    #sys.stdout.flush()
   def shapeparameters(self):
     """ returns end points, lengths, curvature, center of circle of subsegments"""
     divl = 4.0
@@ -1963,9 +1963,13 @@ class App(tk.Frame):
     path = self.askOpenFileName()
     try:
       self.cc = pickle.load(open(path,"rb"))
-      self.ccmanip = CCManip(self.cc,self.canvas)
+      self.ccmanip.cc = self.cc
+      self.ccmanip.redrawSegments()
+      self.ccmanip.addHandles()
+      self.recenterTrack()
     except FileNotFoundError:
       print("file not found!")
+    #self.ccmanip = CCManip(self.cc,self.canvas)
   def saveCP(self):
     path = self.askSaveFileName()
     try:
@@ -2061,15 +2065,6 @@ class App(tk.Frame):
     if self.hdr.is_loop and self.cc.isOpen:
       self.cc.segment[-1].pe = self.cc.segment[0].ps
       self.cc.point.pop() # remove duplicated last point
-      
-      #biarc_r = self.cc.segment[-1].biarc_r
-      #bk   = self.cc.segment[-1].banking
-      #hgts = self.cc.segment[-1].heights
-      #self.cc.removePoint(self.cc.point[-1])
-      #self.cc.toggleOpen(width,biarc_r)
-      #self.cc.segment[-1].banking = bk
-      #self.cc.segment[-1].set_heights(hgts)
-
     # rebuild
     for s in self.cc.segment: # quick fix for setup update madness while importing
       s.heights_need_update = False
