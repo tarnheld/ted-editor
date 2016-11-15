@@ -24,6 +24,7 @@ import raildefs
 sys.path.append("eledit")
 import eledit as eed 
 
+import upload_ted as ut
 
 ##############################################################################
 def lerp(t, a, b):
@@ -950,6 +951,20 @@ class PopupEntry(tk.Toplevel):
     value = self.e.get()
     self.destroy()
     self.cb(value)
+class PopupAbout(tk.Toplevel):
+  def __init__(self, master, pos, desc, title=None):
+    super().__init__(master)
+    self.transient(master)
+    if title:
+      self.title(title)
+    self.geometry("+%d+%d" % (master.winfo_rootx()+pos[0],
+                                master.winfo_rooty()+pos[1]))
+    self.l = tk.Label(self, text = desc)
+    self.l.pack()
+    self.b = tk.Button(self, text = 'Ok', command = self.cleanup)
+    self.b.pack()
+  def cleanup(self,ev=None):
+    self.destroy()
 
 ###########################################################################
 # unfinished:
@@ -2197,18 +2212,94 @@ class App(tk.Frame):
 
 
     ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
-
+    return self.tedfile
+  def saveTedToFile(self,teddata):
     # write to disk
     path = self.askSaveFileName()
     try:
       with open(path, mode='wb') as file:
-        file.write(self.tedfile)
+        file.write(teddata)
     except FileNotFoundError:
       print("file not found!")
-      return
+  def exportAndSaveTed(self):
+    teddata = self.exportTed()
+    self.saveTedToFile(teddata)
+  def onAbout(self):
+    text="""
+    The Ted Editor
+    
+    by tarnheld with the help of the GTPlanet community
+    
+    Special Thanks to eran004, MrGrumpy, NingDynasty,
+    Outspacer, Pr1vatejoker, Razerman and all i forgot!
 
+    includes the Elevation Editor by eran0004, uploadTed by Razerman
+    
+    """
+    self.about = PopupAbout(self.canvas.master,(10,10),text)
+  def onDisclaimer(self):
+    text="""
+    DISCLAIMER
 
-    pass
+    By using the Upload TED command, you will possibly violate the
+    Playstation Network Terms of use, and that might result in your
+    account being banned! While no one so far has been banned by
+    uploading track with software other than the official GT6 Track
+    Path Editor, there have been bans because of modding cars and time
+    trial entries. The Ted Editor including the track upload feature
+    is provided for adding awesome new tracks with features not
+    possible before to GT6, not for gaining advantage over other
+    players, use it wisely."""
+    self.disclaimer = PopupAbout(self.canvas.master,(10,10),text)
+      
+  def uploadTed(self):
+    if not self.disclaimer:
+      self.onDisclaimer()
+    if not self.tedfile:
+      self.tedfile = self.exportTed()
+    if not self.cookie:
+      self.pe = PopupEntry(self.canvas.master,(10,10),"Enter grand-turismo.com session cookie", self.uploadTedWithCookie)
+    else:
+      self.uploadTedWithCookie(self.cookie)
+  def uploadTedWithCookie(self, cookie, title = "track from from ted editor", country="de"):
+    username = ut.checkCookieValidity(cookie)
+    data     = ut.checkTedDataValidity(self.tedfile)
+    self.cookie = cookie # save cookie for later
+    if username and data and ut.uploadTedData(data,title,cookie,username):
+      print("upload successful!")
+    elif not username:
+      print("cookie invalid, please log in again")
+      self.cookie = None # invalidate cached cookie
+    elif not data:
+      print("ted file invalid")
+    else:
+      print("upload failed, maybe more than 30 tracks used already?")
+      
+      
+    # import requests
+    # import json
+    # headers = {'Cookie': 'JSESSIONID='+cookie}
+    # print(headers)
+    # r = requests.post('http://www.gran-turismo.com/gb/ajax/get_online_id/', headers=headers)
+    # print(r.text)
+    # username = json.loads(r.text)["online_id"]
+    # if not username:
+    #     # Print error message, cookie is invalid
+    #     print("Error: Cookie is invalid!")
+    #     self.cookie = None
+    #     return False
+    # else:
+    #     files = {"data": ("gt6.ted", self.tedfile)}
+    #     data = {'job': (None, '1'), 'user_id': (None, username), 'title': (None, title)}
+    #     res = requests.post('https://www.gran-turismo.com/'+country+'/api/gt6/course/', files=files, data=data, headers=headers, verify=False)
+    #     uploadResult = json.loads(res.text)["result"]
+    #     if uploadResult == 1:
+    #         print("Upload succeeded!")
+    #         return True
+    #     else:
+    #         print("Upload failed! Could be due to 30 tracks limit?")
+    #         return False
+    sys.stdout.flush()
   def recenterTrack(self):
     bbox = self.canvas.bbox("segment")
 
@@ -2246,11 +2337,17 @@ class App(tk.Frame):
     filemenu.add_command(label="Import TED", command=self.importTed)
     filemenu.add_command(label="Export TED", command=self.exportTed)
     filemenu.add_separator()
+    filemenu.add_command(label="Upload TED", command=self.uploadTed)
+    filemenu.add_separator()
     filemenu.add_command(label="Import Image", command=self.importImg)
     filemenu.add_command(label="Discard Image", command=self.discardImg)
     filemenu.add_separator()
     filemenu.add_command(label="Quit", command = self.quit)
     self.menubar.add_cascade(label="File", menu = filemenu)
+    helpmenu = tk.Menu(self.menubar, tearoff = 0)
+    helpmenu.add_command(label="About", command = self.onAbout)
+    helpmenu.add_command(label="Upload Disclaimer", command = self.onDisclaimer)
+    self.menubar.add_cascade(label="Help", menu = helpmenu)
     
     self.master.config(menu = self.menubar)
 
@@ -2292,6 +2389,12 @@ class App(tk.Frame):
     self.elevwindow = None
     self.ti_cid = None
 
+    self.cookie = None
+    self.tedfile = None
+
+    self.disclaimer = None
+    self.about = None
+    
     self.dragging = False
 
     self.cc = ControlCurve()
