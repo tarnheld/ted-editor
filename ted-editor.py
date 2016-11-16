@@ -1554,7 +1554,13 @@ class CCManip(FSM):
     self.redrawSelection()
   def onScaleLengthPopup(self,ev):
     #print("onScaleLengthPopup")
-    self.pe = PopupEntry(self.canvas.master,(ev.x,ev.y),"Enter new Length:",self.onScaleLengthPopupDone)
+    text = """
+    Enter new track length:
+    """
+    self.pe = PopupEntry(self.canvas.master,(ev.x,ev.y),
+                         text,
+                         self.onScaleLengthPopupDone,
+                         "Scale to Length")
     #sys.stdout.flush()
   def onScaleLengthPopupDone(self,length):
     #print("onScaleLengthPopupDone",length)
@@ -2017,7 +2023,7 @@ class App(tk.Frame):
       
     def get_segment_heights(heights,bank):
       sh = [heights[j].height for j in range(bank.total_divisions,
-                                               bank.total_divisions+bank.divisions)]
+                                             bank.total_divisions+bank.divisions)]
       #print(len(sh),bank.divisions)
       #sys.stdout.flush()
       return sh
@@ -2076,6 +2082,7 @@ class App(tk.Frame):
     # ted file contains first point as last point if track is closed, fix it:
     if self.hdr.is_loop and self.cc.isOpen:
       self.cc.segment[-1].pe = self.cc.segment[0].ps
+      self.cc.segment[-1].setup()
       self.cc.point.pop() # remove duplicated last point
       self.cc.isOpen = False
     # rebuild
@@ -2230,10 +2237,10 @@ class App(tk.Frame):
     
     by tarnheld with the help of the GTPlanet community
     
-    Special Thanks to eran004, MrGrumpy, NingDynasty,
-    Outspacer, Pr1vatejoker, Razerman and all i forgot!
+    Special Thanks to eran0004, MrGrumpy, NingDynasty,
+    Outspacer, PR1VATEJ0KER, Patrick8308, Razerman and all i forgot!
 
-    includes the Elevation Editor by eran0004, uploadTed by Razerman
+    includes the Elevation Editor by eran0004, uploadTed code by Razerman
     
     """
     self.about = PopupAbout(self.canvas.master,(10,10),text)
@@ -2258,7 +2265,27 @@ class App(tk.Frame):
     if not self.tedfile:
       self.tedfile = self.exportTed()
     if not self.cookie:
-      self.pe = PopupEntry(self.canvas.master,(10,10),"Enter grand-turismo.com session cookie", self.uploadTedWithCookie)
+      text = """
+      Enter the gran-turismo.com session id, to find it log in at the
+      community area at www.gran-turismo.com and copy the session id
+      from the cookies of this domain:
+
+      * in Firefox:
+      -> right click on site content 
+      -> show site information 
+      -> Security tab 
+      -> Show Cookies
+      
+      * in Chrome:
+      -> click on the security information (small lock) left of the addressbar
+      -> Cookies 
+
+      triple click on the content string to select it completely (looks like
+      xxxxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.workerxx)
+      and paste it here:
+
+      """
+      self.pe = PopupEntry(self.canvas.master,(10,10),text,self.uploadTedWithCookie,"Login Cookie")
     else:
       self.uploadTedWithCookie(self.cookie)
   def uploadTedWithCookie(self, cookie, title = "track from from ted editor", country="de"):
@@ -2335,7 +2362,7 @@ class App(tk.Frame):
     filemenu.add_command(label="Load Track", command=self.loadCP)
     filemenu.add_command(label="Save Track", command=self.saveCP)
     filemenu.add_command(label="Import TED", command=self.importTed)
-    filemenu.add_command(label="Export TED", command=self.exportTed)
+    filemenu.add_command(label="Export TED", command=self.exportAndSaveTed)
     filemenu.add_separator()
     filemenu.add_command(label="Upload TED", command=self.uploadTed)
     filemenu.add_separator()
