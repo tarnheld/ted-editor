@@ -364,33 +364,51 @@ class Straight:
     return lerp(t,self.p0,self.p1)
   def eval_t(self,t):
     return  la.unit(self.p1 - self.p0)
-
   def dist_sqr_at_l(self,p):
     "return squared distance to p and length of segment at nearest point"
     return line_seg_distance_sqr_and_length(self.p0,self.p1,p)
   def transform(self,xform):
     self.p0 = transform_point(self.p0,xform)
     self.p1 = transform_point(self.p1,xform)
-  TedCp  = ted.ted_data_tuple("cp",ted.cp)
-  TedSeg = ted.ted_data_tuple("segment",ted.segment)
   def circleparameters(self):
     c1,k1,a1,l1 = (0,0),0,0,la.norm(self.p0-self.p1)
     c2,k2,a2,l2 = (0,0),0,0,0
 
     return c1,k1,a1,l1,c2,k2,a2,l2
+###########################################################################
 def offsetLine(segment,ts,te,o,n):
   so = segment.offset(o)
+  ots = ts
+  ote = te
+  if isinstance(segment, Biarc):
+    c1,k1,a1,l1,c2,k2,a2,l2 = segment.circleparameters()
+    oc1,ok1,oa1,ol1,oc2,ok2,oa2,ol2 = so.circleparameters()
+    ss = ts*(l1+l2)
+    se = te*(l1+l2)
+    if ss < l1:
+      oss = ss/l1*ol1
+      ots = oss/(ol1+ol2)
+    else:
+      oss = ol1 + (ss-l1)/l2 * ol2
+      ots = oss/(ol1+ol2)
+    if se < l1:
+      ose = se/l1*ol1
+      ote = ose/(ol1+ol2)
+    else:
+      ose = ol1 + (se-l1)/l2 * ol2
+      ote = ose/(ol1+ol2)
+      
   cas = []
   nn = max(n,2)
   for j in range(nn):
-    t = lerp(j/(nn-1),ts,te)
+    # TODO: distribute points evenly over both segments of biarc
+    t = lerp(j/(nn-1), ots, ote)
     p = so.eval(t)
     cas.append(p)
   return cas
 
 def offsetPolygon(segment,ts,te,o1,o2,n):
   return offsetLine(segment,ts,te,o1,n) + offsetLine(segment,te,ts,o2,n)
-
 ###########################################################################
 class CCPoint:
   def __init__(self, point = la.coords(0,0), tangent=None):
@@ -501,10 +519,11 @@ class CCSegment:
     self.ps,self.pe   = self.pe,self.ps
     # reverse biarc parameter
     self.biarc_r = 1 - self.biarc_r
-    # TODO: banking data reverse
+    # TODO: banking and height data reverse
     self.setup()
   def transform(self,xform):
     self.seg.transform(xform)
+    # TODO: scale offset without altering width
     for i,p in enumerate(self.poly):
       self.poly[i] = transform_point(p,xform)
   def draw(self,canvas,cids=None,**kw):
@@ -600,12 +619,12 @@ class ControlCurve:
         ep,l,div,k,center = sp
         bl = {'banking': b.angle, 'vlen': l, 'vpos':tl,
                          'divNum': divnum, 'unk': td }
-        print (bl)
-        sys.stdout.flush()
         banklist.append(bl)
         
         tl += l
         td += divnum
+        print (bl)
+    sys.stdout.flush()
     return banklist
   def length(self):
     "total length of control curve"
@@ -645,6 +664,29 @@ class ControlCurve:
   def pointAndTangentAt(self,l):
     s,t = self.segmentAndTAt(l)
     return s.seg.eval(t),s.seg.eval_t(t)
+  def offsetPolygonAt(self,ls,le,w):
+    """ constructs an offset polygon along the track from ls to le"""
+    tls = min(ls,le)
+    tle = max(ls,le)
+    sl = 0
+    front = []
+    back  = []
+    done = False
+    for s in self.segment:
+      sl = s.seg.length()
+      if tls < sl:
+        ts = tls/sl if tls > 0  else 0
+        te = tle/sl if tle < sl else 1
+        #print("poly",ts,te,tls,tle)
+        front += offsetLine(s.seg, ts, te, -w/2, 16)
+        back  += offsetLine(s.seg, ts, te,  w/2, 16)
+      tls -= sl
+      tle -= sl
+      if tls <= 0 and tle <= 0:
+        break
+    #sys.stdout.flush()
+    back.reverse()
+    return front+back
   def nearest(self,p):
     mind = 100000000
     minl = None
@@ -2354,6 +2396,14 @@ class App(tk.Frame):
    self.clearTrackIndicator()
    p = self.cc.pointAt(l)
    self.ti_cid = canvas_create_circle(self.canvas,p,10)
+  def drawTrackOffsetIndicator(self,l1,l2):
+   self.clearTrackIndicator()
+   #print(l1,l2)
+   poly = self.cc.offsetPolygonAt(l1,l2,20)
+   #print(len(poly))
+   self.ti_cid = self.canvas.create_polygon([(x[0],x[1]) for x in poly],fill="",outline="blue")
+   #sys.stdout.flush()
+
   def setup(self):
     # create a toplevel menu
     self.menubar = tk.Menu(self)

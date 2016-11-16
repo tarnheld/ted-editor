@@ -846,7 +846,10 @@ class ElevationEditor(tk.Frame):
         self._brush_data['x'] = self.canvas.canvasx(event.x)
         self.MouseLabelChange(event)
         if self.trackapp:
-            self.trackapp.drawTrackIndicator(self.canvas.canvasx(event.x)/self._x_scale)
+            l = self._brush_data['x']/self._x_scale
+            r = self._brush_data['brush']/self._x_scale
+            #self.trackapp.drawTrackIndicator(self.canvas.canvasx(event.x)/self._x_scale)
+            self.trackapp.drawTrackOffsetIndicator(l-r,l+r)
     def MouseWheel(self, event, mode = 'brush', step=8):
         '''change brush / feather radius'''
         r = self._brush_data[mode]
