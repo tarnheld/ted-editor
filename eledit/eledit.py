@@ -872,6 +872,7 @@ class ElevationEditor(tk.Frame):
         self._brush_data['x'] = self.canvas.canvasx(event.x)
         self.MouseLabelChange(event)
 
+        self.focus_set()
         if self.trackapp:
             l = self._brush_data['x']/self._x_scale
             r = self._brush_data['r'].get()/self._x_scale
