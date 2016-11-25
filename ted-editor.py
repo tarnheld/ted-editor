@@ -23,6 +23,7 @@ import raildefs
 
 sys.path.append("eledit")
 import eledit as eed 
+import readfile_2 as eed_rf2
 
 import upload_ted as ut
 
@@ -2036,15 +2037,17 @@ class App(tk.Frame):
       pickle.dump(self.cc,open(path,"wb"))
     except FileNotFoundError:
       print("file not found!")
-  def importTed(self):
+  def loadAndImportTed(self):
     path = self.askOpenFileName()
     tedfile = ""
     try:
       with open(path, mode='rb') as file:
         tedfile = file.read()
+        self.importTed(tedfile)
     except FileNotFoundError:
       print("file not found!")
       return
+  def importTed(self,tedfile):
     self.tedfile = bytearray(tedfile)
     self.hdr     = ted.ted_data_to_tuple("header",ted.header,tedfile,0)
     self.cps     = ted.ted_data_to_tuple_list("cp",ted.cp,tedfile,self.hdr.cp_offset,self.hdr.cp_count)
@@ -2199,8 +2202,13 @@ class App(tk.Frame):
     # total_l is the new track length, self.hdr is the header of the imported ted file and contains
     # the old track_length.
     # sf is the linear scale factor for the lengths of road and decoration elements and others
-    sf = total_l/self.hdr.track_length
-
+    try:
+      sf = total_l/self.hdr.track_length
+    except:
+      sf = 1.0
+      self.checkps = []
+      self.road = []
+      self.deco = []
     TedCheck = ted.ted_data_tuple("checkpoint",ted.checkpoint)
     chps = []
     for cp in self.checkps:
@@ -2231,7 +2239,34 @@ class App(tk.Frame):
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
 
     # build new tedfile
-    hdr = deepcopy(self.hdr)
+    hdr = None
+    try:
+      hdr = deepcopy(self.hdr)
+    except:
+      import time
+      TedHdr =  ted.ted_data_tuple("hdr",ted.header)
+      self.hdr = TedHdr(id=b"GT6TED\0\0",
+                        version=104,
+                        scenery=3,
+                        road_width=8,
+                        track_width_a=8,
+                        track_width_b=12,
+                        track_length=total_l,
+                        datetime=int(time.time()),
+                        is_loop= 0 if self.cc.isOpen else 1,
+                        home_straight_length = 700,
+                        elevation_diff = eldiff,
+                        num_corners=4,
+                        finish_line=0,
+                        start_line=412,
+                        empty1_offset=0,
+                        empty1_count=0,
+                        empty2_offset=0,
+                        empty2_count=0,
+                        empty3_offset=0,
+                        empty3_count=0)
+      print(self.hdr)
+      hdr = deepcopy(self.hdr)
 
     tedsz = (ted.ted_data_size(ted.header) +
              ted.ted_data_size(ted.cp) * len(cps) +
@@ -2244,9 +2279,10 @@ class App(tk.Frame):
     self.tedfile = bytearray(b'\x00'*tedsz)
 
     hdr = hdr._replace(track_length=total_l,elevation_diff=eldiff)
-
-    o = ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
-    hdr = hdr._replace(cp_offset=o,cp_count=len(cps))
+    hdrsz = ted.ted_data_size(ted.header)
+    
+    #o = ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
+    hdr = hdr._replace(cp_offset=hdrsz,cp_count=len(cps))
     o = ted.tuple_list_to_ted_data(cps,ted.cp,self.tedfile,hdr.cp_offset,hdr.cp_count)
     hdr = hdr._replace(bank_offset=o,bank_count=len(segs))
     o = ted.tuple_list_to_ted_data(segs,ted.segment,self.tedfile,hdr.bank_offset,hdr.bank_count)
@@ -2259,6 +2295,8 @@ class App(tk.Frame):
     hdr = hdr._replace(decoration_offset=o,decoration_count=len(decos))
     o = ted.tuple_list_to_ted_data(decos,ted.decoration,self.tedfile,hdr.decoration_offset,hdr.decoration_count)
 
+    print(hdr)
+    sys.stdout.flush() 
 
     ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
     return self.tedfile
@@ -2390,18 +2428,23 @@ class App(tk.Frame):
     self.canvas.zoom((bbox[0]+bbox[2])/2,(bbox[1]+bbox[3])/2,1000*0.9*sf)
   def clearTrackIndicator(self):
     if self.ti_cid:
-      self.canvas.delete(self.ti_cid)
+      for cid in self.ti_cid:
+        self.canvas.delete(cid)
       self.ti_cid = None
   def drawTrackIndicator(self,l):
    self.clearTrackIndicator()
    p = self.cc.pointAt(l)
-   self.ti_cid = canvas_create_circle(self.canvas,p,10)
-  def drawTrackOffsetIndicator(self,l1,l2):
+   self.ti_cid = [canvas_create_circle(self.canvas,p,10)]
+  def drawTrackOffsetIndicator(self,ls,le,f0,f1):
    self.clearTrackIndicator()
-   #print(l1,l2)
-   poly = self.cc.offsetPolygonAt(l1,l2,20)
-   #print(len(poly))
-   self.ti_cid = self.canvas.create_polygon([(x[0],x[1]) for x in poly],fill="",outline="blue")
+   bpoly = self.cc.offsetPolygonAt(ls,le,20)
+   f0poly = self.cc.offsetPolygonAt(ls-f0,ls,20)
+   f1poly = self.cc.offsetPolygonAt(le,le+f1,20)
+   self.ti_cid = [
+     self.canvas.create_polygon([(x[0],x[1]) for x in bpoly],fill="",outline="blue"),
+     self.canvas.create_polygon([(x[0],x[1]) for x in f0poly],fill="",outline="lightblue"),
+     self.canvas.create_polygon([(x[0],x[1]) for x in f1poly],fill="",outline="lightblue")
+   ]
    #sys.stdout.flush()
 
   def setup(self):
@@ -2411,7 +2454,7 @@ class App(tk.Frame):
     filemenu = tk.Menu(self.menubar, tearoff = 0)
     filemenu.add_command(label="Load Track", command=self.loadCP)
     filemenu.add_command(label="Save Track", command=self.saveCP)
-    filemenu.add_command(label="Import TED", command=self.importTed)
+    filemenu.add_command(label="Import TED", command=self.loadAndImportTed)
     filemenu.add_command(label="Export TED", command=self.exportAndSaveTed)
     filemenu.add_separator()
     filemenu.add_command(label="Upload TED", command=self.uploadTed)
@@ -2511,53 +2554,12 @@ class App(tk.Frame):
     self.ccmanip.start()
 
   def onElevationEdit(self,ev):
-    def make_tokens(structure):
-      '''Creates token data (x, y) from an extracted TED structure'''
-
-      def get_bank_index(index, banks):
-        bank_index = -1
-        for bank in banks:
-          if index >= bank['unk']:
-            bank_index += 1
-          else:
-            break
-        return bank_index
-          
-      def get_distance(bank, index):
-        vlen = bank['vlen']
-        divNum = bank['divNum']
-        unk = bank['unk']
-        vpos = bank['vpos']
-        distance = vlen/divNum*(index-unk)+vpos
-        return distance
-
-      heights = structure['mod']
-      banks = structure['banks']
-            
-      index = 0
-      for height in heights:
-        bank_index = get_bank_index(index, banks)
-        bank = banks[bank_index]
-        x = get_distance(bank, index)
-        structure['tokens'].append((x, height))
-        index += 1
-
-      return structure
-
-    heightlist = self.cc.getHeightList()
-    banklist = self.cc.getBankList()
-
-    mod = list(heightlist) #creates copy for modding
-        
-    structure = {'head': '', 'banks': banklist, 'heights': heightlist,
-                 'mod': mod, 'tail': '', 'tokens' : []}
-
-    structure = make_tokens(structure)
-
     if not self.elevwindow:
       self.elevwindow = tk.Toplevel(self.master)
       self.eleveditor = eed.ElevationEditor(self.elevwindow,self)
-      self.eleveditor.extract(structure)
+      self.tedfile = self.exportTed()
+      trackobj = eed_rf2.initFromTedFile(self.tedfile)
+      self.eleveditor._load_ted(trackobj)
       self.elevwindow.protocol("WM_DELETE_WINDOW",self.onElevationClose)
       self.ccmanip.stop()
       self.ccmanip.removeHandles()
@@ -2566,8 +2568,10 @@ class App(tk.Frame):
     else:
       self.onElevationClose()
   def onElevationClose(self):
-    hl = self.eleveditor.get_heightlist()
-    self.cc.setHeightList(hl)
+    tokenlist = self.eleveditor._gen_tokenlist()
+    self.eleveditor.structure.mod = [token[1]-(self.eleveditor._first_y/self.eleveditor._y_scale) for token in tokenlist]
+    tedfile = eed_rf2.generateTedFile(self.eleveditor.structure)
+    self.importTed(tedfile)
     
     self.eleveditor = None
     self.elevwindow.destroy()

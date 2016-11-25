@@ -1,5 +1,7 @@
+'''v 2016-11-24'''
 import math
 from random import randint
+import bisect
         
 def roll(chance = 0.5):
     roll = randint(0, 999)
@@ -40,7 +42,11 @@ def feather(feather, f_mode, delta_x):
         return f
         
 
-    modes = [sine, mode_1, mode_2, mode_3]
+    modes = {'Wave':sine, 0:sine,
+             'Linear':mode_1, 1:mode_1,
+             'Bowl':mode_2, 2:mode_2,
+             'Plateau':mode_3, 3:mode_3}
+
     f = modes[f_mode](feather, delta_x)
     return f
 
@@ -48,6 +54,24 @@ def flatten(A, B, P):
     #interpolation
     P[1] = (P[0]-A[0])/(B[0]-A[0])*(B[1]-A[1])+A[1]
     return (P[0], P[1], P[0], P[1])
+
+def resample(bankheights, minstep):
+    x_data = [h[0] for h in bankheights]
+    start = x_data[0]
+    end = x_data[-1]    
+    distance = end - start
+    divNum = math.ceil(distance/minstep)
+    step = distance/divNum
+    resampled = [[start+i*step, 0] for i in range(0, divNum)]
+    
+    for i, P in enumerate(resampled):
+        Bindex = bisect.bisect(x_data, P[0])
+        Aindex = Bindex - 1
+        A = bankheights[Aindex]
+        B = bankheights[Bindex]
+        resampled[i] = flatten(A, B, P)[0:2]
+
+    return resampled
 
 def smoothen(heightsList, tolerance = 0.04, minLen = 5, maxLen = 60, flatten = True):
     def findSlopes(heightsList, tol = 0.04, minL = 5, maxL = 60, fltn = False):
