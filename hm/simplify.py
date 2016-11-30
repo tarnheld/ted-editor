@@ -75,7 +75,7 @@ def simplifyDP(points,sqTol):
 
 def simplify(points, tol, hq):
     if len(points) < 2:
-        return points
+        return []
     sqTol = tol*tol
     if hq:
         points = simplifyRadDist(points,sqTol)

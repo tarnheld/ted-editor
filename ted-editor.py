@@ -481,18 +481,17 @@ class CCSegment:
     self.heights_need_update = False
     #print("seg height update!")
     sys.stdout.flush()
-  def calc_heights(self):
+  def calc_heights(self,hm,ex):
     def heightAt(p,ex,hme,hmw,hmh):
       ip = (p+ex)/(2*ex) * la.coords(hmw,hmh)
       hs = interpol_bi(hmm,ip[0],ip[1])
       return hs * hme[1] + (1-hs) * hme[0]
-    hm = np.load("hm/andalusia.npz")
+
     hme = hm["extents"]
     hmm = hm["heightmap"]
     hmw = hmm.shape[0]
     hmh = hmm.shape[1]
-    ex = 3499.99975586
-
+   
     sps = self.shapeparameters()
     
     hs = heightAt(self.ps.point,ex,hme,hmw,hmh)
@@ -505,7 +504,7 @@ class CCSegment:
       self.heights[j] = hgts
       hs = he
     #print("seg height calc!")
-    sys.stdout.flush()
+    #sys.stdout.flush()
     self.heights_need_update = False
     #exhgts = hgts[-6:-1] + hgts + hgts[0:6]
     #print(len(hgts),len(exhgts))
@@ -589,24 +588,6 @@ class ControlCurve:
     self.point     = []
     self.segment   = []
     self.rail      = []
-  def getHeightList(self):
-    hl = []
-    for i,s in enumerate(self.segment):
-      if s.heights_need_update:
-        s.calc_heights()
-        print("segment",i,"needs height update!")
-        sys.stdout.flush()
-      for hgts in s.heights:
-        hl.extend(hgts)
-    hl.append(self.segment[0].heights[0][0])
-    return hl
-  def setHeightList(self,hl):
-    """heightlist should contain heights for all segments in right order"""
-    i = 0
-    for s in self.segment:
-      for j,hgts in enumerate(s.heights):
-        s.heights[j] = hl[i:i+len(hgts)]
-        i += len(hgts)
   def getBankList(self): # for elevation editor
     banklist = []
     tl = 0
@@ -2130,12 +2111,20 @@ class App(tk.Frame):
       self.cc.segment[-1].setup()
       self.cc.point.pop() # remove duplicated last point
       self.cc.isOpen = False
-    # rebuild
+
+    #switch to correct scenery
+    for name,data in self.scenery.items():
+      if data["id"] == self.hdr.scenery:
+        self.switchScenery(name)
+          
     for s in self.cc.segment: # quick fix for setup update madness while importing
       s.heights_need_update = False
+
+    # rebuild
     self.ccmanip.cc = self.cc
     self.ccmanip.redrawSegments()
     self.ccmanip.addHandles()
+
     self.recenterTrack()
     
   def exportTed(self):
@@ -2157,7 +2146,7 @@ class App(tk.Frame):
     
     for i,seg in enumerate(self.cc.segment):
       if seg.heights_need_update:
-        seg.calc_heights()
+        seg.calc_heights(self.hm,self.scene["ex"])
       for j,sp in enumerate(seg.shapeparameters()):
         ep,l,div,k,center = sp
         bk   = seg.banking[j]
@@ -2247,7 +2236,7 @@ class App(tk.Frame):
       TedHdr =  ted.ted_data_tuple("hdr",ted.header)
       self.hdr = TedHdr(id=b"GT6TED\0\0",
                         version=104,
-                        scenery=3,
+                        scenery=self.scene["id"],
                         road_width=8,
                         track_width_a=8,
                         track_width_b=12,
@@ -2278,7 +2267,7 @@ class App(tk.Frame):
 
     self.tedfile = bytearray(b'\x00'*tedsz)
 
-    hdr = hdr._replace(track_length=total_l,elevation_diff=eldiff)
+    hdr = hdr._replace(scenery=self.scene["id"],track_length=total_l,elevation_diff=eldiff)
     hdrsz = ted.ted_data_size(ted.header)
     
     #o = ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
@@ -2447,7 +2436,22 @@ class App(tk.Frame):
    ]
    #sys.stdout.flush()
 
+  def switchScenery(self,name):
+    print("switch scenery",name)
+    self.scene = self.scenery[name]
+    print("switch scenery",self.scene)
+    
+    self.drawContours(self.scene["ct"])
+    self.hm = np.load(self.scene["npz"])
+    
   def setup(self):
+    self.scenery = {
+      "Andalusia"    : {"id" : 3, "ct" : "hm/andalusia-contours.npz",    "npz" : "hm/andalusia.npz",    "ex" : 3499.99975586 },
+      "Eifel"        : {"id" : 2, "ct" : "hm/eiffel-contours.npz",       "npz" : "hm/eiffel.npz",       "ex" : 9600.0 },
+      "Eifel Flat"   : {"id" : 5, "ct" : "hm/eiffel-flat-contours.npz",  "npz" : "hm/eiffel-flat.npz",  "ex" : 9600.0 },
+      "Death Valley" : {"id" : 1, "ct" : "hm/death-valley-contours.npz", "npz" : "hm/death-valley.npz", "ex" : 3592.67358398 },
+    }
+    
     # create a toplevel menu
     self.menubar = tk.Menu(self)
 
@@ -2468,6 +2472,12 @@ class App(tk.Frame):
     helpmenu.add_command(label="About", command = self.onAbout)
     helpmenu.add_command(label="Upload Disclaimer", command = self.onDisclaimer)
     self.menubar.add_cascade(label="Help", menu = helpmenu)
+
+    scenerymenu = tk.Menu(self.menubar, tearoff = 0)
+    for name,data in self.scenery.items():
+      print("add scenery menu",name)
+      scenerymenu.add_command(label = name, command = lambda s=self,n=name: s.switchScenery(n))
+    self.menubar.add_cascade(label="Scenery", menu = scenerymenu)
     
     self.master.config(menu = self.menubar)
 
@@ -2497,7 +2507,8 @@ class App(tk.Frame):
     self.canvas.bind("<Configure>", self.onConfigure)
     self.canvas.focus_set()
     self.drawCoordGrid()
-    self.drawContours("hm/andalusia-contours.npz")
+    self.switchScenery("Andalusia")
+    #self.drawContours("hm/andalusia-contours.npz")
     
     self.img = None
     self.simg = None
@@ -2582,24 +2593,41 @@ class App(tk.Frame):
     
       
   def drawContours(self,path):
+    #print("load contours",path)
+    try:
+      self.canvas.delete("contour")
+    except:
+      pass
+    
     import re
-    self.contours = np.load("hm/andalusia-contours.npz")
+    self.contours = np.load(path)
+    ex = self.scene["ex"]
+    lf = len(self.contours.files)
     for a in self.contours.files:
       cs = self.contours[a]
       h = int(re.findall('\d+',a)[0])
-      h = h/len(self.contours.files)
-      col = colorsys.rgb_to_hsv(0.7,0.9,0.7)
-      col = (col[0] - h,col[1],col[2])
+      h = h/lf
+      #print("file",a,h)
+      #print("contours",len(cs))
+      col = colorsys.rgb_to_hsv(0.7,0.9,0.85)
+      hue = col[0] - h/2
+      hue = m.fmod(hue,1)
+      col = (hue,max(0,min(col[1],1)),max(0,min(col[2],1)))
       col = colorsys.hsv_to_rgb(*col)
       hexcol = rgb2hex(col)
       for c in cs:
         if len(c):
-          cc = [((x[1]-512)/1024*3499.99975586*2,(x[0]-512)/1024*3499.99975586*2) for x in c]
+          cc = [((x[1]-512)/1024*ex*2,(x[0]-512)/1024*ex*2) for x in c]
           if la.norm(c[-1] - c[0]) < 0.01:
             self.canvas.create_polygon(cc,fill="",outline=hexcol,width=7,tag="contour")
           else:
             self.canvas.create_line(cc,fill=hexcol,width=7,tag="contour")
-    self.canvas.tag_lower("contour")
+    try:
+      self.canvas.tag_lower("contour")
+    except:
+      pass
+    
+    sys.stdout.flush()
             
 
   def onToggleManip(self, ev):
