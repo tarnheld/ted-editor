@@ -5,6 +5,7 @@ import struct
 import tkinter as tk
 from tkinter import filedialog
 from time import strftime
+from random import randint
 
 class TrackObject():
     def __init__(self, file, filename=''):
@@ -486,6 +487,79 @@ def export_TED(Track):
     except FileNotFoundError:
         print("FileNotFoundError: No such file or directory.")
 
+        
+
+    ### ELEVATION PROFILE -------------------------------------------------------
+
+def importElevationProfile():
+    '''Loads an elevation profile (CSV)'''
+    #dialog
+    root=tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    file_opt = options = {}
+    options['defaultextension'] = '.txt'
+    options['filetypes'] = [('text', '.txt')]
+    options['initialdir'] = 'Elevation Profiles'
+    options['parent'] = root
+    options['title'] = 'Import elevation profile'
+    
+    path = filedialog.askopenfilename(**file_opt)
+    filename = basename(path)
+    root.destroy()
+
+    try:
+        with open(path) as file:
+            stringdata = [line.strip() for line in file]
+
+        floatdata = []
+        for string in stringdata:
+            try:
+                [x, z] = [float(x) for x in string.split(',')]
+                floatdata.append([x, z])
+            except ValueError:
+                pass
+        first_z = floatdata[0][1]
+        floatdata_translated = [[x, z-first_z] for [x, z] in floatdata]
+
+        ep = {'filename':filename, 'data':floatdata}
+
+        return ep
+    except FileNotFoundError:
+        print('error')
+        return None
+
+def exportElevationProfile(heightslist):
+
+    #savedialog
+    root=tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    file_opt = options = {}
+    options['defaultextension'] = '.txt'
+    options['filetypes'] = [('text', '.txt')]
+    options['initialdir'] = 'Elevation Profiles'
+    filename = "ep_%s.txt" % strftime("%Y%m%d_%H%M%S")
+    options['initialfile'] = filename
+    options['parent'] = root
+    options['title'] = 'Export elevation profile'
+    filename = filedialog.asksaveasfilename(**options)
+    root.destroy()
+
+    #save the file
+    try:
+        with open(filename, 'w') as file:
+            file.write('Distance (m),Elevation (m)\n')
+            for (x, z) in heightslist:
+                file.write('%s,%s\n' %(('%f' % x).rstrip('0').rstrip('.'),
+                                       ('%f' % z).rstrip('0').rstrip('.')))
+    except FileNotFoundError:
+        print("FileNotFoundError: No such file or directory.")
+
+
+
+    ### TEST FUNCTIONS -------------------------------------------------------
+
 def comp(A, B):
     '''compares two files to see if they're identical'''
     for index, byte in enumerate(A):
@@ -493,5 +567,9 @@ def comp(A, B):
             print(index, byte, B[index])
             break
     print('done')
+
+def gen_hl():
+    hl = [(i, randint(-100, 100)/randint(90, 110)) for i in range(0, 20)]
+    return hl
             
     

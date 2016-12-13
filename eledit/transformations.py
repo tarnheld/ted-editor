@@ -50,12 +50,14 @@ def feather(feather, f_mode, delta_x):
     f = modes[f_mode](feather, delta_x)
     return f
 
-def flatten(A, B, P):
+def flatten(A, B, P, mode='set'):
     #interpolation
-    P[1] = (P[0]-A[0])/(B[0]-A[0])*(B[1]-A[1])+A[1]
-    return (P[0], P[1], P[0], P[1])
+    z = (P[0]-A[0])/(B[0]-A[0])*(B[1]-A[1])+A[1]
+    if mode == 'add':
+        z += P[1]
+    return (P[0], z, P[0], z)
 
-def resample(bankheights, minstep):
+def resample(bankheights, minstep=None):
     x_data = [h[0] for h in bankheights]
     start = x_data[0]
     end = x_data[-1]    
@@ -63,15 +65,35 @@ def resample(bankheights, minstep):
     divNum = math.ceil(distance/minstep)
     step = distance/divNum
     resampled = [[start+i*step, 0] for i in range(0, divNum)]
+
+    output = interpolation(resampled, bankheights)
+
+    return output
     
-    for i, P in enumerate(resampled):
+    '''for i, P in enumerate(resampled):
         Bindex = bisect.bisect(x_data, P[0])
         Aindex = Bindex - 1
         A = bankheights[Aindex]
         B = bankheights[Bindex]
         resampled[i] = flatten(A, B, P)[0:2]
 
-    return resampled
+    return resampled'''
+
+def interpolation(tokenlist, reflist, mode='set'):
+    x_data = [i[0] for i in reflist]
+
+    output = []
+    for i, P in enumerate(tokenlist):
+        Bindex = bisect.bisect(x_data, P[0])
+        if P[0] == x_data[Bindex-1]:
+            Bindex -= 1
+        Aindex = Bindex - 1
+        A = reflist[Aindex]
+        B = reflist[Bindex]
+        output.append(flatten(A, B, P, mode)[0:2])
+
+    return output
+        
 
 def smoothen(heightsList, tolerance = 0.04, minLen = 5, maxLen = 60, flatten = True):
     def findSlopes(heightsList, tol = 0.04, minL = 5, maxL = 60, fltn = False):

@@ -2580,7 +2580,7 @@ class App(tk.Frame):
       self.onElevationClose()
   def onElevationClose(self):
     tokenlist = self.eleveditor._gen_tokenlist()
-    self.eleveditor.structure.mod = [token[1]-(self.eleveditor._first_y/self.eleveditor._y_scale) for token in tokenlist]
+    self.eleveditor.structure.mod = [token[1]+self.eleveditor._first_z for token in tokenlist]
     tedfile = eed_rf2.generateTedFile(self.eleveditor.structure)
     self.importTed(tedfile)
     

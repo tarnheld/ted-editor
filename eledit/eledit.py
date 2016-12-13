@@ -1,252 +1,34 @@
 import tkinter as tk
-import tkinter.ttk as ttk
+from tkinter import font as tkFont
+import dialogs as dg
 import transformations as tf
 import readfile_2 as rf
+
 from bisect import bisect_left
-
 from random import randint
-
-class ContrastDialog:
-
-    def __init__(self, parent):
-
-        top = self.top = tk.Toplevel(parent)
-        self.ElevationEditor = parent
-
-        tk.Label(top, text='Contrast factor (0 to flatten)').grid(sticky="w")
-
-        self.e = tk.Entry(top)
-        self.e.grid(sticky="we", padx=5)
-        self.e.focus()
-
-        b = tk.Button(top, text='OK', command=self.ok)
-        b.grid(sticky="we", pady=5)
-
-    def ok(self):
-        try:
-            z = float(self.e.get())
-        except:
-            z = 0
-        self.ElevationEditor._contrast(z)   
-        self.top.destroy()
-
-class RoughenDialog:
-
-    def __init__(self, parent):
-
-        top = self.top = tk.Toplevel(parent)
-        self.ElevationEditor = parent
-
-        self.entries = [['Potencia (float)', tk.StringVar(value='4.0')],
-                   ['Magnitude (float)', tk.StringVar(value='0.02')],
-                   ['Variation (int)', tk.StringVar(value='100')]]
-
-        for entry in self.entries:
-            tk.Label(top, text=entry[0]).grid(sticky='w')
-            e = tk.Entry(top, textvariable = entry[1])
-            e.grid(sticky="we", padx=5)
-
-        b = tk.Button(top, text='OK', command=self.ok)
-        b.grid(sticky="we", pady=5)
-        top.focus_set()
-
-    def ok(self):
-        e = self.entries
-        try:
-            pot = float(e[0][1].get())
-            mag = float(e[1][1].get())
-            var = int(e[2][1].get())
-            self.ElevationEditor._roughen(pot, mag, var)
-        except:
-            print('Exception raised.')
-        self.top.destroy()
-
-class SmoothenDialog:
-
-    def __init__(self, parent):
-
-        top = self.top = tk.Toplevel(parent)
-        self.ElevationEditor = parent
-
-        self.entries = [['Delta slope tolerance (float)', tk.StringVar(value='0.05')],
-                   ['Min segment length (int)', tk.StringVar(value='6')],
-                   ['Max segment length (int)', tk.StringVar(value='60')]]
-
-        for entry in self.entries:
-            tk.Label(top, text=entry[0]).grid(sticky='w')
-            e = tk.Entry(top, textvariable = entry[1])
-            e.grid(sticky="we", padx=5)
-
-        b = tk.Button(top, text='OK', command=self.ok)
-        b.grid(sticky="we", pady=5)
-        top.focus_set()
-
-    def ok(self):
-        e = self.entries
-        try:
-            tol = float(e[0][1].get())
-            minL = int(e[1][1].get())
-            maxL = int(e[2][1].get())
-            self.ElevationEditor._smoothen(tol, minL, maxL)
-        except:
-            print('Exception raised.')
-        self.top.destroy()
-
-class TranslateDialog:
-
-    def __init__(self, parent):
-
-        top = self.top = tk.Toplevel(parent)
-        self.ElevationEditor = parent
-
-        tk.Label(top, text='Raise by (m)').grid(sticky="w")
-
-        self.e = tk.Entry(top)
-        self.e.grid(sticky="we", padx=5)
-        self.e.focus()
-
-        b = tk.Button(top, text='OK', command=self.ok)
-        b.grid(sticky="we", pady=5)
-
-    def ok(self):
-        try:
-            z = float(self.e.get())
-        except:
-            z = 0
-        self.ElevationEditor._translate(z)   
-        self.top.destroy()
-
-class ResampleDialog:
-
-    def __init__(self, parent):
-
-        top = self.top = tk.Toplevel(parent)
-        self.ElevationEditor = parent
-
-        tk.Label(top, text='Minimum resolution (m)').grid(sticky='w')
-
-        self.e = tk.Entry(top)
-        self.e.grid(sticky="we", padx=5)
-        self.e.focus()
-
-        b = tk.Button(top, text='OK', command=self.ok)
-        b.grid(sticky='we', pady=5)
-
-    def ok(self):
-        try:
-            minres = float(self.e.get())
-        except:
-            minres = None
-            print('%s is not a valid minimum resolution' %self.e.get())
-        if minres!= None:
-            self.ElevationEditor._resample(minres)
-        self.top.destroy()
-
-class LeftPanel(tk.Frame):
-
-    def __init__(self, parent):
-        tk.Frame.__init__(self, parent)
-
-        # brush data display
-        l = tk.LabelFrame(self, text = "Brush Data")
-        l.grid(padx=5, pady=5, ipadx=2, sticky="we")
-
-        # labels
-        for i, item in enumerate(('x coord', 'z coord', 'brush', 'feather', 'mode')):
-            tk.Label(l, text=item, pady=0, padx=4, anchor='w').grid(row=i, column=0, sticky='we')
-
-        # coord values
-        tk.Label(l, textvariable=parent._mouselabel['x'], anchor='e').grid(row=0, column=1, columnspan=2, sticky='we')
-        tk.Label(l, textvariable=parent._mouselabel['z'], anchor='e').grid(row=1, column=1, columnspan=2, sticky='we')
-
-        # register validation
-        vcmd = (self.register(self.onValidate),
-                '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
         
-        # brush radius
-        bradius = tk.Spinbox(l, from_=0, to=1000, width=7, justify='right',
-                             textvariable=parent._brush_data['r'],
-                             validate='key', validatecommand=vcmd, command=self.callback)
-        bradius.grid(row=2, column=1, columnspan=2, sticky='we', padx=1, pady=0)
-
-        #feather radius and feather mode
-        for i in (0, 1):
-            fradius = tk.Spinbox(l, from_=0, to=1000, width=7, justify='right',
-                                 textvariable=parent._brush_data['f%d' %i],
-                                 validate='key', validatecommand=vcmd, command=self.callback)
-            fradius.grid(row=3, column=i+1, sticky='we', padx=1, pady=0)
-
-            option = ttk.Combobox(l, takefocus=False, width=7,
-                                  textvariable = parent._feathermode2[i],
-                                  values=('Wave', 'Linear', 'Bowl', 'Plateau'), state="readonly")
-            option.set('Wave')
-            option.grid(row=4, column=i+1, sticky='we', padx=1, pady=0)
-
-        # create transformations buttons
-        l = tk.LabelFrame(self, text = "Transform")
-        buttons = [('Contrast', parent._contrastDialog),
-                   ('Roughen', parent._roughenDialog),
-                   ('Smoothen', parent._smoothenDialog),
-                   ('Translate', parent._translateDialog),
-                   ('Resample', parent._resampleDialog)]
-
-        for i, button in enumerate(buttons):
-            b = tk.Button(l, text=button[0], command = button[1])
-            b.grid(row=i//2, column=i%2, padx=2, pady=2, sticky="we")
-        l.grid(padx=5, pady=5, ipady=2, sticky="we")
-
-        # create instructions panel
-        l = tk.LabelFrame(self, text = "Commands")
-
-        messages = ('Use brush: click + drag',
-                    'Brush radius: mousewheel',
-                    'Feather radius: ctrl + mousewheel',
-                    'Panning: right-click + drag',
-                    'Small incr. modifier: shift + [cmd]',
-                    'Flatten section: F',
-                    'Smoothen section: S',
-                    'Zoom in: Z',
-                    'Zoom out: alt + Z',
-                    'Undo: ctrl + Z',
-                    'Redo: ctrl + Y')
-
-        for message in messages:
-            tk.Label(l, text = message, wraplength=200, anchor='w', justify='left').grid(sticky='we', padx=2)
-
-        l.grid(padx=5, pady=5, ipady=2, sticky="we")
-
-    def callback(self):
-        print('fire')
-        self.focus_set()
-
-    def onValidate(self, d, i, P, s, S, v, V, W):
-        valid = P.isdigit()
-        if valid:
-            valid = 0 <= int(P) <= 1000
-        return valid
-
-        
-
 class ElevationEditor(tk.Frame):
-    '''Illustrate how to drag items on a Tkinter canvas'''
+    '''An application for editing the height data of a TED file'''
 
     def __init__(self, master, trackapp=None, tokenlist=None, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.pack(side=tk.LEFT,expand=True,fill=tk.BOTH)
         self.trackapp = trackapp
-        
 
         # app title
-        version = "1.1.2"
+        version = "1.1.4a"
         self.master.title("Elevation Editor v."+ version)
 
         new_tags = self.bindtags() + ("all",)
         self.bindtags(new_tags)
 
-        # this data is used to keep track of an 
-        # item being dragged
+        # token and brush data
+        self._tokens = tuple()
+        self._elevationProfiles  = []
         self._drag_data = {'x': 0, 'y': 0, 'items': [], 'feather': []}
-        self._brush_data = {'x': 0, 'r': tk.IntVar(value=10), 'f0': tk.IntVar(value=10), 'f1': tk.IntVar(value=10)} #r = brush radius, f = feather radius
+        self._brush_data = {'x': 0, 'r': tk.DoubleVar(value=10), 'f0': tk.DoubleVar(value=10), 'f1': tk.DoubleVar(value=10)} #r = brush radius, f = feather radius
+        self._brushes = tuple()
+        self._feathers = tuple()
         self._leftfeather = False
         self._rightfeather = False
         self._feathermode2 = [tk.StringVar(), tk.StringVar()]
@@ -261,7 +43,7 @@ class ElevationEditor(tk.Frame):
         self._high_y = 0
         self._low_x = 0
         self._low_y = 0
-        self._first_y = 0
+        self._first_z = 0
         self._brush_offset = self._high_x - self._low_x
         self._y_scale = -5.0
         self._x_scale = 1.0
@@ -269,20 +51,18 @@ class ElevationEditor(tk.Frame):
         self.isLoop = 0
 
         # set graphics
-        self.line_width = 2
-        
+        self.line_width = 2      
         can_bg = "#6090CC"
-        self.c_gridFill = "#4C74A4"
-        
+        self.c_gridFill = "#4C74A4"    
         gCan_bg = "#303030"
-        self.g_gridFill = "#202020"
-        
+        self.g_gridFill = "#202020"    
         self.tokenFill = "#FFFFFF"
         self.brushFill = "#5682B8"
         self.featherFill = "#5B89C2"
 
 
-        ### MENUS ###
+
+        ### MENUS ----------------------------------------------------------------------------------
         
         # create a toplevel menu and a frame
         self.menubar = tk.Menu(self)
@@ -292,6 +72,9 @@ class ElevationEditor(tk.Frame):
         filemenu.add_command(label="Load", command=self._load_ted)
         filemenu.add_command(label="Export", command=self._export_ted)
         filemenu.add_separator()
+        #filemenu.add_command(label="Import elevation profile", command=self._import_ep)
+        filemenu.add_command(label="Export elevation profile", command=self._export_ep)
+        filemenu.add_separator()
         filemenu.add_command(label="Quit", command=self.quit)
         self.menubar.add_cascade(label="File", menu = filemenu)
         
@@ -299,19 +82,22 @@ class ElevationEditor(tk.Frame):
         editmenu = tk.Menu(self.menubar, tearoff = 0)
         editmenu.add_command(label="Undo", command = self._undo)
         editmenu.add_command(label="Redo", command = lambda: self._undo(arg="redo"))
-        '''editmenu.add_separator()'''
-        
         self.menubar.add_cascade(label="Edit", menu = editmenu)
+
+        #create pulldown help menu
+        helpmenu = tk.Menu(self.menubar, tearoff = 0)
+        helpmenu.add_command(label="Quick reference", command=self._quick_reference)
+        self.menubar.add_cascade(label="Help", menu = helpmenu)
 
         #display the menu
         self.master.config(menu = self.menubar)
 
+        #left panel
+        self.leftPanel = dg.LeftPanel(self)
 
-        ### CREATE LEFT PANEL ###
 
-        self.leftPanel = LeftPanel(self)
         
-        ### CREATE CANVASES ###
+        ### CREATE CANVASES ---------------------------------------------------------------------------
 
         c_width = 600
 
@@ -326,7 +112,12 @@ class ElevationEditor(tk.Frame):
         new_tags = self.graphCanvas.bindtags() + ("brusharea", "all")
         self.graphCanvas.bindtags(new_tags)
 
-        ### SCROLLBARS ###
+        # create the brush
+        self._create_brush(self._brush_data['x'])
+
+
+
+        ### SCROLLBARS ---------------------------------------------------------------------------------
 
         #add scrollbars
         self.hbar = tk.Scrollbar(self, orient="horizontal", command=self.xview)
@@ -337,7 +128,8 @@ class ElevationEditor(tk.Frame):
         self.graphScaleBar = tk.Scrollbar(self, orient="vertical", command=self.graphScale)
 
 
-        ### RULERS ###
+
+        ### RULERS -----------------------------------------------------------------------------------
 
         self.r_width = 50
         
@@ -346,7 +138,10 @@ class ElevationEditor(tk.Frame):
         self.c_vruler = tk.Canvas(self, width=self.r_width, height=15, bd=1) #canvas
         self.g_vruler = tk.Canvas(self, width=self.r_width, height=15, bd=1) #graph
 
-        # add bindings
+
+
+        ### BINDINGS ------------------------------------------------------------------------------------
+        
         self.bind_class("brusharea", "<ButtonPress-1>", self.OnTokenButtonPress)
         self.bind_class("brusharea", "<ButtonRelease-1>", self.OnTokenButtonRelease)
         self.bind_class("brusharea", "<B1-Motion>", self.OnTokenMotion)
@@ -367,13 +162,11 @@ class ElevationEditor(tk.Frame):
         self.bind('<Left>', self._leftkey)
         self.bind('<Right>', self._rightkey)
         self.bind('<Configure>', self._my_configure)
-        self.bind('<Return>', self._returnkey)
+        self.bind('<Return>', self._returnkey)  
 
-        # create brushes and mouselabel
-        self._create_brush(self._brush_data['x'])   
      
 
-        ### GEOMETRY MANAGEMENT ###
+        ### GEOMETRY MANAGEMENT ---------------------------------------------------------------------
         
         self.leftPanel.grid(row=0, column=0, rowspan=3, sticky="NS")
         self.canvas.grid(row=0, column=2, sticky = "WENS")
@@ -384,61 +177,52 @@ class ElevationEditor(tk.Frame):
         self.hruler.grid(row=1, column=2, sticky = "WE")
         self.c_vruler.grid(row=0, column=1, sticky = "NS")
         self.g_vruler.grid(row=2, column=1, sticky = "NS")
-        
 
-        ### OTHER ###
-
-        self.update_idletasks()
-        self.focus_set()
         self.columnconfigure(2, weight=1)
         self.rowconfigure(0, weight=1)
+        
+
+
+        ### OTHER ---------------------------------------------------------------------------------
+ 
+        self.update_idletasks()
+        self.focus_set()
+
+
+    ### IMPORTING AND EXPORTING FILES -------------------------------------------------------------
 
     def _load_ted(self, structure=None):
+        
         def delete_old(self):       
             #delete any old tokens, origins and brushes
             self._past = []
             self._future = []
-            tokens = self.canvas.find_withtag("token")
-            for token in tokens:
-                self.canvas.delete(token)
-
-            origins = self.canvas.find_withtag("origin")
-            for origin in origins:
-                self.canvas.delete(origin)
-
-            brushes = self.canvas.find_withtag("brush")
-            feathers = self.canvas.find_withtag("feather")
-
-            deletethis = tokens + origins + brushes + feathers
-            for item in deletethis:
-                self.canvas.delete(item)
             
+            origins = self.canvas.find_withtag("origin")
+            
+            deletethis = self._tokens + origins + self._brushes + self._feathers
+            for item in deletethis:
+                self.canvas.delete(item) 
 
         def extract(self, structure):
-
-            def _create_origin(self, tokenlist):
-                prev_xy = None            
-                for index, token in enumerate(tokenlist):
-                    (x, y) = token[0:2]
-                    y *= self._y_scale
-                    y += self._first_y
-                    if prev_xy != None:
-                        self.canvas.create_line(prev_xy[0], prev_xy[1], x, y,
-                                                fill = self.c_gridFill, width = self.line_width, tags="origin")
-                    prev_xy = (x, y)
 
             def _create_token(self, coord, color):
                 '''Create a token at the given coordinate in the given color'''
                 (x,y) = coord
-                y += self._first_y
                 token = self.canvas.create_rectangle(x, y, x, y, 
                                         outline=color, width=1, fill=color, tags="token")
-                self._tokens.append(token)
                         
                 
             self.structure = s = structure
             self.isLoop = s.header['isloopcourse'][-1]
             tokenlist = s.tokens
+
+            # get first_z           
+            self._first_z = tokenlist[0][1]
+
+            #normalize to 0
+            normalized_tokens = [(x, z-self._first_z) for (x,z) in tokenlist]
+            tokenlist = normalized_tokens
 
             #find highest and lowest x, y in tokens
             self._find_xy(tokenlist)
@@ -448,28 +232,28 @@ class ElevationEditor(tk.Frame):
                 self._brush_offset = self._high_x - self._low_x
             else:
                 self._brush_offset = 0
-            self._y_scale = -5
+            #self._y_scale = -5
 
             #draw brush
             self._create_brush(self._brush_data['x'])
 
-            # get first y           
-            first_y = tokenlist[0][1]
-            self._first_y = 0 - first_y * self._y_scale
-
             # draw origin
-            _create_origin(self, tokenlist)
+            self._create_guide(tokenlist)
 
             #draw tokens
-            self._tokens = []
-            for token in tokenlist:
-                _create_token(self, (token[0], token[1]*self._y_scale), self.tokenFill)
+            for (x, z) in tokenlist:
+                _create_token(self, (x, z*self._y_scale), self.tokenFill)
+            self._tokens = self.canvas.find_withtag('token')
             self._find_slope()
             self._scrollregion()
 
             # position brush
             self.brushChange(x = self.canvas.canvasx(0))
             self._brush_data['x'] = self.canvas.canvasx(0)
+
+            #draw elevation profiles
+            for ep in self._elevationProfiles:
+                ep.draw()
             
         #load a .ted file
         if structure == None:
@@ -478,8 +262,33 @@ class ElevationEditor(tk.Frame):
             delete_old(self) 
             extract(self, structure)
 
+    def _export_ted(self):
+        tokenlist = self._gen_tokenlist()
+        self.structure.mod = [token[1]+self._first_z for token in tokenlist]
+        rf.export_TED(self.structure)
+
+    def _import_ep(self):
+        ep = rf.importElevationProfile()
+        return ep
+        #self._create_guide(ep)
+        #self._order()
+
+    def _export_ep(self):
+        heightslist = self._gen_tokenlist()
+        denormalized = [(x, y+self._first_z) for (x, y) in heightslist]
+        rf.exportElevationProfile(denormalized)
+
+    def _gen_tokenlist(self):
+        tokenlist = []
+        for token in self._tokens:
+            y = self.canvas.coords(token)[1]/self._y_scale
+            x = self.canvas.coords(token)[0]
+            tokenlist.append((x, y))
+        return tokenlist
+
     def _create_brush(self, x):
         '''Create a brush at x coordinate'''
+        
         ranges = (range(0, 1), range(-1, 2))
         _range = ranges[self.isLoop]
         r = self._brush_data['r'].get()
@@ -497,10 +306,15 @@ class ElevationEditor(tk.Frame):
             brush = self.canvas.create_rectangle(x0, y0, x1, y1, width=0,
                 fill = b_col, tags="brush")
 
-    def _export_ted(self):
-        tokenlist = self._gen_tokenlist()
-        self.structure.mod = [token[1]-(self._first_y/self._y_scale) for token in tokenlist]
-        rf.export_TED(self.structure)
+        self._brushes = self.canvas.find_withtag('brush')
+        self._feathers = self.canvas.find_withtag('feather')
+
+
+
+
+
+
+    ### UNDO, REDO, QUICK REFERENCE -------------------------------------------------------------------------------
 
     def _undo(self, event = None, arg="undo"):
         if event != None:
@@ -521,10 +335,11 @@ class ElevationEditor(tk.Frame):
         if heightslist != None:
             c = self.canvas
             s = self._y_scale
-            tokens = c.find_withtag("token")
-            for i, token in enumerate(tokens):
+
+            for i, token in enumerate(self._tokens):
                 x, z = heightslist[i][0:2]
                 c.coords(token, x, z*s, x, z*s)
+                
             self._scrollregion()
 
     def _appendToHistory(self, arg="past"):
@@ -532,15 +347,28 @@ class ElevationEditor(tk.Frame):
             heightslist = self._past
         else:
             heightslist = self._future
+            
         c = self.canvas
         s = self._y_scale
-        tokens = c.find_withtag("token")
         h = []
-        for token in tokens:
+        
+        for token in self._tokens:
             x, z = c.coords(token)[0:2]
             h.append((x, z/s))
+            
         heightslist.append(h)
+
+    def _quick_reference(self):
+        try:
+            self._qr.destroy()
+        except:
+            None
+        self._qr = dg.QuickReference(self)
         
+        
+
+
+    ### SLOPES GRIDS AND GUIDES -------------------------------------------------------------------------
 
     def _draw_slope_guides(self):
 
@@ -609,6 +437,8 @@ class ElevationEditor(tk.Frame):
         medium = "#909090"
         dark = "#202020"
 
+        rulerfont = tkFont.Font(family="Helvetica", size=8)
+
         guideslist = (self.graphCanvas, self.canvas, self.hruler, self.c_vruler, self.g_vruler)
         for canvas in guideslist:
             canvas.delete("guide")
@@ -617,7 +447,7 @@ class ElevationEditor(tk.Frame):
         (w, x0, x1) = vertical_data(self, self.graphCanvas)
 
         #horizontal grahpCanvas lines
-        (lines, res) = subdivide(y0, y1)
+        (lines, res) = subdivide(y0, y1, subdivisions=5)
         for line in lines:
             y = line*self._slopescale
             if line == 0:
@@ -627,7 +457,7 @@ class ElevationEditor(tk.Frame):
             self.graphCanvas.create_line(x0, y, x1, y, fill=self.g_gridFill, width=_width, tags="guide")
             #create text
             _text = '%s%%' %format(line*100, 'g')
-            self.g_vruler.create_text(self.r_width, y, text=_text, anchor="e", tags="guide")
+            self.g_vruler.create_text(self.r_width, y, text=_text, anchor="e", tags="guide", font=rulerfont)
             
         #vertical lines
         i = 0
@@ -641,7 +471,7 @@ class ElevationEditor(tk.Frame):
             #create text
             if i%500 == 0:
                 y_text = y0*-self._slopescale+14
-                self.hruler.create_text(i, 7.5, text="%d m" %i, tags="guide")
+                self.hruler.create_text(i, 7.5, text="%d m" %i, tags="guide", font=rulerfont)
             i+=100
       
         #horizontal token canvas lines
@@ -652,7 +482,8 @@ class ElevationEditor(tk.Frame):
             r1 = -min((y0, -self._high_y))
             r0 = -max((y1, -self._low_y))
         
-        (lines, res) = subdivide(y0, y1, subdivisions=5, _range=(r0, r1))
+        #(lines, res) = subdivide(y0, y1, subdivisions=5, _range=(r0, r1))
+        (lines, res) = subdivide(0, 200/self._y_scale, subdivisions=4, _range=(r0, r1))
         for line in lines:
             y = line*-self._y_scale
             if line == 0:
@@ -662,9 +493,15 @@ class ElevationEditor(tk.Frame):
             self.canvas.create_line(x0, -y, x1, -y, fill=self.c_gridFill, width=_width, tags="guide")
             #create text
             _text = '%s m' %format(line, 'g')
-            self.c_vruler.create_text(self.r_width, -y, text=_text, anchor="e", tags="guide")
+            self.c_vruler.create_text(self.r_width, -y, text=_text, anchor="e", tags="guide", font=rulerfont)
 
+        self._order()
+
+        
+    def _order(self):
         self.canvas.tag_lower("guide")
+        self.canvas.tag_lower("ep")
+        self.canvas.tag_lower("origin")
         self.canvas.tag_lower("brush")
         self.canvas.tag_lower("feather")
         
@@ -693,6 +530,8 @@ class ElevationEditor(tk.Frame):
         if tokenlist == None:
             tokenlist = self._gen_tokenlist()
 
+        tokenlen = len(tokenlist)
+
         for index, token in enumerate(tokenlist):
             x = token[0]
             y = token[1]
@@ -706,7 +545,7 @@ class ElevationEditor(tk.Frame):
                 prev_y = tokenlist[index-1][1]
                 slope_a = _slope(self, prev_x, prev_y, x, y)
                                
-            if index != len(tokenlist)-1:   
+            if index != tokenlen-1:   
                 next_x = tokenlist[index+1][0]
                 next_y = tokenlist[index+1][1]
                 slope_b = _slope(self, x, y, next_x, next_y)
@@ -722,42 +561,58 @@ class ElevationEditor(tk.Frame):
         if len(self._slopes) > 0:
             _draw_slope(self, 1, "#FF0000")
             _draw_slope(self, 2, "#0090FF")
-            
 
-    def _gen_tokenlist(self):
-        tokens = self.canvas.find_withtag("token")
-        tokenlist = []
-        for token in tokens:
-            y = self.canvas.coords(token)[1]/self._y_scale
-            x = self.canvas.coords(token)[0]
-            tokenlist.append((x, y))
-        return tokenlist
+
+    def _create_guide(self, tokenlist, tag="origin"):
+        prev_xy = None
+        for index, token in enumerate(tokenlist):
+            (x, y) = token[0:2]
+            y *= self._y_scale
+            if prev_xy != None:
+                self.canvas.create_line(prev_xy[0], prev_xy[1], x, y,
+                                        fill = self.c_gridFill, width = self.line_width, tags=tag)
+            prev_xy = (x, y)
+
+
+
+    ### MOUSE COMMANDS --------------------------------------------------------------------------------------------
         
+    def OnMotion(self, event):
+        '''Handle moving the brush'''
+        self.brushChange(x = self.canvas.canvasx(event.x)) 
+        self._brush_data['x'] = self.canvas.canvasx(event.x)
+        self.MouseLabelChange(event)
+        if self.trackapp:
+            l = self._brush_data['x']/self._x_scale
+            r = self._brush_data['r'].get()/self._x_scale
+            f0 = self._brush_data['f0'].get()/self._x_scale
+            f1 = self._brush_data['f1'].get()/self._x_scale
+            #self.trackapp.drawTrackIndicator(self.canvas.canvasx(event.x)/self._x_scale)
+            self.trackapp.drawTrackOffsetIndicator(l-r,l+r,f0,f1)
+
     def OnTokenButtonPress(self, event):
         '''Begin drag of an object'''
+        
         # record the item and its location
         self._appendToHistory()
         self._future = []
-        tokens = self.canvas.find_withtag('token')
-        x = self.canvas.canvasx(event.x)
-        y0 = self.canvas.canvasy(-10000)
-        y1 = self.canvas.canvasy(10000)
-        r = self._brush_data['r'].get()
+        #get brush data
+        ranges = (range(0, 1), range(-1, 2))
+        _range = ranges[self.isLoop]
+        x = self.canvas.canvasx(event.x) 
         f0 = self._brush_data['f0'].get()
         f1 = self._brush_data['f1'].get()
         o = self._brush_offset
-        for i in range(-1, 2):
-            brush_start = (o*i)+x-r
-            brush_end = (o*i)+x+r
-            brush = [i for i in self.canvas.find_overlapping(brush_start, y0, brush_end, y1) if i in tokens]
-            self._drag_data["items"].append(brush)
-            feather = [i for i in self.canvas.find_overlapping(brush_start-f0, y0, brush_end+f1, y1) if i in tokens and i not in brush]    
-            self._drag_data["feather"].append(feather)
+        #get drag data
+        for i in _range:
+            self.get_drag_data(x, i, f=(f0, f1))
+            
         self._drag_data["x"] = self.canvas.canvasx(event.x)
         self._drag_data["y"] = event.y
 
     def OnTokenButtonRelease(self, event):
         '''End drag of an object'''
+        
         # reset the drag information
         self._drag_data["items"] = []
         self._drag_data["feather"] = []
@@ -770,6 +625,8 @@ class ElevationEditor(tk.Frame):
         '''Handle dragging of an object'''
         
         #initial definitions
+        ranges = (range(0, 1), range(-1, 2))
+        _range = ranges[self.isLoop]
         o = self._brush_offset
         r = self._brush_data['r'].get()
         f0 = self._brush_data['f0'].get()
@@ -781,105 +638,30 @@ class ElevationEditor(tk.Frame):
         delta_y = (event.y - self._drag_data["y"])*factor
         
         # move brush and feather objects
-        for i in range(-1, 2):
+        for index, i in enumerate(_range):
             x = (o*i) + self._drag_data['x']
 
             #move brush objects
-            for item in self._drag_data['items'][i+1]:
-                #if "token" in self.canvas.gettags(item):
+            for item in self._drag_data['items'][index]:
                 self.canvas.move(item, 0, delta_y)
                     
             # move feathered objects
-            for item in self._drag_data['feather'][i+1]:
-                #if "token" in self.canvas.gettags(item):
+            for item in self._drag_data['feather'][index]:
                 token_x = self.canvas.coords(item)[0]
                 delta_x = abs(x-token_x)-r
                 if token_x < x:
                     feather = tf.feather(f0, f0_mode, delta_x)
                 else:
                     feather = tf.feather(f1, f1_mode, delta_x)
-                #feather = tf.feather(f, f_mode, delta_x)
                 self.canvas.move(item, 0, delta_y*feather)               
 
         # record the new position
         self._drag_data["y"] = event.y
         self.MouseLabelChange(event, mode="y", factor=factor)
-        
-        # draw slope
-        #self.after(10, self._find_slope())
-        #self._find_slope()
 
     def ShiftOnTokenMotion(self, event):
         '''Handle shift-dragging of an object'''
-        self.OnTokenMotion(event, factor=0.1)     
-
-    def brushChange(self, x=None, r=None, f0=None, f1=None):
-        '''Handles motion and resizing of brush and feather'''
-        if r == None:
-            r = self._brush_data['r'].get()
-        if f0 == None:
-            f0 = self._brush_data['f0'].get()
-        if f1 == None:
-            f1 = self._brush_data['f1'].get()
-        if x == None:
-            x = self._brush_data['x']
-            
-        y0 = self.canvas.canvasy(-10000)
-        y1 = self.canvas.canvasy(10000)
-        o = self._brush_offset
-        brushes = self.canvas.find_withtag("brush")
-        feathers = self.canvas.find_withtag("feather")
-        index = -1
-        for brush in brushes:
-            self.canvas.coords(brush, (o*index)+x-r, y0, (o*index)+x+r, y1)
-            index += 1
-        index = -1
-        for feather in feathers:
-            self.canvas.coords(feather, (o*index)+x-(r+f0), y0, (o*index)+x+(r+f1), y1)
-            index += 1
-
-    def MouseLabelChange(self, event, mode="all", factor=1):
-        '''Handles the display of the brush data'''
-        if mode == "all": #OnMotion
-            x_coord = self.canvas.canvasx(event.x)
-            y_coord = y = self.canvas.canvasy(event.y)
-            
-        else: #OnTokenMotion
-            x_coord = self._mouselabel['x_coord']
-            y_coord = self._mouselabel['y_coord']
-            y = self.canvas.canvasy(event.y) - y_coord
-            
-        r = self._brush_data['r'].get()
-        f0 = self._brush_data['f0'].get()
-        f1 = self._brush_data['f1'].get()
-
-        x = '%.3f m' % x_coord
-        z = '%.3f m' %(y*factor/self._y_scale)
-        
-        #b_rad = '%.1f\n' %r
-        #f0_rad = '%.1f | %.1f' %(f0, f1)
-
-        self._mouselabel['x'].set(x)
-        self._mouselabel['z'].set(z)
-        
-        #save mouselabel
-        self._mouselabel['x_coord'] = x_coord
-        self._mouselabel['y_coord'] = y_coord
-
-    def OnMotion(self, event):
-        '''Handle moving the brush'''
-        self.brushChange(x = self.canvas.canvasx(event.x)) 
-        self._brush_data['x'] = self.canvas.canvasx(event.x)
-        self.MouseLabelChange(event)
-
-        self.focus_set()
-        if self.trackapp:
-            l = self._brush_data['x']/self._x_scale
-            r = self._brush_data['r'].get()/self._x_scale
-            f0 = self._brush_data['f0'].get()/self._x_scale
-            f1 = self._brush_data['f1'].get()/self._x_scale
-            #self.trackapp.drawTrackIndicator(self.canvas.canvasx(event.x)/self._x_scale)
-            self.trackapp.drawTrackOffsetIndicator(l-r,l+r,f0,f1)
+        self.OnTokenMotion(event, factor=0.1)
 
     def MouseWheel(self, event, modes = ('r',), step=8):
         '''change brush / feather radius'''
@@ -917,6 +699,280 @@ class ElevationEditor(tk.Frame):
     def ShiftControlMouseWheel(self, event):
         self.ControlMouseWheel(event, step=1)
 
+    def Button3Press(self, event):
+        self.canvas.scan_mark(event.x, event.y)
+        self.c_vruler.scan_mark(0, event.y)
+        for canvas in (self.graphCanvas, self.hruler):
+            canvas.scan_mark(event.x, 0)
+
+    def MouseScroll(self, event):
+        g = 2
+        self.canvas.scan_dragto(event.x, event.y, gain=g)
+        self.c_vruler.scan_dragto(0, event.y, gain=g)
+        for canvas in (self.graphCanvas, self.hruler):
+            canvas.scan_dragto(event.x, 0, gain=g)
+
+    def get_drag_data(self, x, index=0, f=None):
+        '''Select objects'''
+        
+        # record the item and its location
+        r = self._brush_data['r'].get()
+        o = self._brush_offset
+        y0 = self.canvas.canvasy(-10000)
+        y1 = self.canvas.canvasy(10000)  
+        start = (o*index)+x-r
+        end = (o*index)+x+r
+        brush = [i for i in self.canvas.find_overlapping(start, y0, end, y1) if i in self._tokens]
+        self._drag_data['items'].append(brush)
+        if f != None:
+            feather = [i for i in self.canvas.find_overlapping(start-f[0], y0, end+f[1], y1) if i in self._tokens and i not in brush]    
+            self._drag_data["feather"].append(feather)
+
+    def brushChange(self, x=None, r=None, f0=None, f1=None):
+        '''Handles motion and resizing of brush and feather'''
+        
+        if r == None:
+            r = self._brush_data['r'].get()
+        if f0 == None:
+            f0 = self._brush_data['f0'].get()
+        if f1 == None:
+            f1 = self._brush_data['f1'].get()
+        if x == None:
+            x = self._brush_data['x']
+
+        ranges = (range(0, 1), range(-1, 2))
+        _range = ranges[self.isLoop]
+            
+        y0 = self.canvas.canvasy(-10000)
+        y1 = self.canvas.canvasy(10000)
+        o = self._brush_offset
+        
+        for brush, index in enumerate(_range):
+            start = (o*index)+x-r
+            end = start+(2*r)
+            self.canvas.coords(self._brushes[brush], start, y0, end, y1)
+            self.canvas.coords(self._feathers[brush], start-f0, y0, end+f1, y1)
+
+    def MouseLabelChange(self, event, mode="all", factor=1):
+        '''Handles the display of the brush data'''
+        
+        if mode == "all": #OnMotion
+            x_coord = self.canvas.canvasx(event.x)
+            y_coord = y = self.canvas.canvasy(event.y)
+            
+        else: #OnTokenMotion
+            x_coord = self._mouselabel['x_coord']
+            y_coord = self._mouselabel['y_coord']
+            y = self.canvas.canvasy(event.y) - y_coord
+            
+        r = self._brush_data['r'].get()
+        f0 = self._brush_data['f0'].get()
+        f1 = self._brush_data['f1'].get()
+
+        x = '%.3f m' % x_coord
+        z = '%.3f m' %(y*factor/self._y_scale)
+
+        self._mouselabel['x'].set(x)
+        self._mouselabel['z'].set(z)
+        
+        #save mouselabel
+        self._mouselabel['x_coord'] = x_coord
+        self._mouselabel['y_coord'] = y_coord
+
+
+
+    ### TRANSFORMATIONS COMMANDS ----------------------------------------------------------------
+
+    def _contrastDialog(self):
+        dialog = dg.ContrastDialog(self)
+        self.wait_window(dialog.top)
+
+    def _contrast(self, weight=0):
+        '''Scale all height points'''
+        self._appendToHistory()
+        self._future = []
+
+        for item in self._tokens:
+            x, z = self.canvas.coords(item)[0:2]
+            z *= weight
+            self.canvas.coords(item, x, z, x, z)
+            
+        #draw slope
+        self._scrollregion()
+
+    def _roughenDialog(self):
+        dialog = dg.RoughenDialog(self)
+        self.wait_window(dialog.top)
+        
+    def _roughen(self, potencia = 4, magnitude = 0.02, variation = 100):
+        '''Apply small random elevation changes to all height points'''
+        self._appendToHistory()
+        self._future = []
+        scale = magnitude*self._y_scale
+        v = variation
+
+        for item in self._tokens:
+            delta_y = ((randint(0, v)/v)**potencia)*scale
+            neg = randint(0, 1)
+            if neg:
+                delta_y*=-neg
+            self.canvas.move(item, 0, delta_y)
+            
+        #draw slope
+        self._scrollregion()
+
+    def _smoothenDialog(self):
+        dialog = dg.SmoothenDialog(self)
+        self.wait_window(dialog.top)
+        
+    def _smoothen(self, tol=0.04, minL=6, maxL=100):
+        '''Apply a smoothening algorithm to all height points'''
+        self._appendToHistory()
+        self._future = []
+        c = self.canvas
+        heightsList = [c.coords(i)[0:2] for i in self._tokens]
+
+        rounded = tf.smoothen(heightsList, tol, minL, maxL)
+        
+        for item in self._tokens:
+            x, z = rounded.pop(0)[0:2]
+            c.coords(item, x, z, x, z)
+            
+        #draw slope
+        self._scrollregion()
+
+    def _translateDialog(self):
+        dialog = dg.TranslateDialog(self)
+        self.wait_window(dialog.top)
+
+    def _translate(self, z=0):
+        '''Translate all heightpoints along z axis'''
+        self._appendToHistory()
+        self._future = []
+        
+        for item in self._tokens:
+            delta_z = z*self._y_scale
+            self.canvas.move(item, 0, delta_z)
+            
+        #draw slope
+        self._scrollregion()
+
+    def _resampleDialog(self):
+        dialog = dg.ResampleDialog(self)
+        self.wait_window(dialog.top)
+
+    def _resample(self, minstep=2):
+        '''Change height data resolution'''
+        struct = self.structure
+        heightsList = self._gen_tokenlist()
+        
+        resampled = []
+        
+        for bank in struct.banks:
+            unk = bank['unk']
+            bankheights = heightsList[unk:unk+bank['divNum']+1]
+            bank['unk'] = len(resampled)
+            resampled+=(tf.resample(bankheights, minstep))
+            bank['divNum'] = len(resampled)-bank['unk']
+
+        resampled.append(heightsList[-1])
+        struct.tokens = [(token[0], token[1]+self._first_z) for token in resampled]
+        struct.mod = [token[1] for token in struct.tokens]
+        struct.update_data()
+
+        self._load_ted(struct)
+
+
+
+    ### KEY COMMANDS ------------------------------------------------------------------------------
+
+    def FButtonPress(self, event):
+        '''Flatten section covered by brush'''
+        self._appendToHistory()
+        self._future = []
+        x = self._brush_data['x']
+        self.get_drag_data(x)
+        
+        '''Transformation'''
+        try:
+            A = self._drag_data['items'][0].pop(0)
+            A = self.canvas.coords(A)
+            B = self._drag_data['items'][0].pop(-1)
+            B = self.canvas.coords(B)
+
+            for P in self._drag_data['items'][0]:
+                new_xy = tf.flatten(A, B, self.canvas.coords(P))
+                self.canvas.coords(P, new_xy)
+        except IndexError:
+            print('IndexError')
+
+        self._drag_data['items'] = []
+        # draw slope
+        self._find_slope()
+
+    def SButtonPress(self, event):
+        def _append_slope(self, item):
+            coords = self.canvas.coords(item)
+            slope = [i[1] for i in self._slopes if i[0] == coords[0]][0]
+            item = (coords[0], coords[1], slope*self._y_scale)
+            return item
+        
+        '''Select objects'''
+        self._appendToHistory()
+        self._future = []
+        x = self._brush_data['x']
+        self.get_drag_data(x)
+
+        '''Transformation'''
+        try:
+            A = self._drag_data['items'][0].pop(0)
+            A = _append_slope(self, A)
+            B = self._drag_data['items'][0].pop(-1)
+            B = _append_slope(self, B)
+
+            for P in self._drag_data['items'][0]:
+                new_xy = tf.spline(A, B, self.canvas.coords(P))
+                self.canvas.coords(P, new_xy)
+        except IndexError:
+            None
+
+        self._drag_data['items'] = []
+        # draw slope
+        self._find_slope()
+
+    def _returnkey(self, event):
+        self.focus_set()
+
+    def zkey(self, event):
+        self.Zoom(zoom=1.2)
+
+    def altzkey(self, event):
+        self.Zoom(zoom=1/1.2)
+
+    def Zoom(self, zoom=2, axis='z'):
+        '''Zoom in and out on the X or Z axis'''
+        
+        if axis == 'x':
+            index = 0
+            self._x_scale *= zoom
+        else:
+            index = 1
+            self._y_scale *= zoom
+
+        for item in self.canvas.find_withtag('token'):
+            coords = self.canvas.coords(item) #get the coords of the item
+            coords[index] *= zoom #scale the coordinate specified by the keystroke
+            x, z = coords[0], coords[1]
+            self.canvas.coords(item, x, z, x, z) #apply the new coordinates
+
+        for item in self.canvas.find_withtag('origin')+self.canvas.find_withtag('ep'):
+            coords = self.canvas.coords(item)
+            coords[1] *= zoom
+            coords[3] *= zoom
+            self.canvas.coords(item, coords[0], coords[1], coords[2], coords[3])
+
+        self._scrollregion()
+
     def _leftkey(self, event):
         self._rightfeather = False
 
@@ -933,202 +989,9 @@ class ElevationEditor(tk.Frame):
         else:
             self._rightfeather = True
 
-    def get_drag_data(self):
-        '''Select objects'''
-        # record the item and its location
-        x = self._brush_data['x']
-        y0 = self.canvas.canvasy(-10000)
-        y1 = self.canvas.canvasy(10000)
-        r = self._brush_data['r'].get()
-        o = self._brush_offset
-        for i in range(-1, 2):
-            self._drag_data["items"]+=(self.canvas.find_overlapping(
-                                (o*i)+x-r, y0, (o*i)+x+r, y1))
-        temp_list = []
-        for item in self._drag_data['items']:
-            if "token" in self.canvas.gettags(item):
-                #self._drag_data['items'].remove(item)
-                temp_list.append(item)
 
-        self._drag_data['items'] = temp_list
 
-    def _contrastDialog(self):
-        dialog = ContrastDialog(self)
-        self.wait_window(dialog.top)
-
-    def _contrast(self, weight=0):
-        '''Scale all height points'''
-        self._appendToHistory()
-        self._future = []
-        for item in self.canvas.find_withtag('token'):
-            x, z = self.canvas.coords(item)[0:2]
-            z *= weight
-            self.canvas.coords(item, x, z, x, z)
-        #draw slope
-        self._scrollregion()
-
-    def _roughenDialog(self):
-        dialog = RoughenDialog(self)
-        self.wait_window(dialog.top)
-        
-    def _roughen(self, potencia = 4, magnitude = 0.02, variation = 100):
-        '''Apply small random elevation changes to all height points'''
-        self._appendToHistory()
-        self._future = []
-        scale = magnitude*self._y_scale
-        v = variation
-        for item in self.canvas.find_withtag('token'):
-            delta_y = ((randint(0, v)/v)**potencia)*scale
-            neg = randint(0, 1)
-            if neg:
-                delta_y*=-neg
-            self.canvas.move(item, 0, delta_y)
-        #draw slope
-        self._scrollregion()
-
-    def _smoothenDialog(self):
-        dialog = SmoothenDialog(self)
-        self.wait_window(dialog.top)
-        
-    def _smoothen(self, tol=0.04, minL=6, maxL=100):
-        '''Apply a smoothening algorithm to all height points'''
-        self._appendToHistory()
-        self._future = []
-        c = self.canvas
-        heightsList = [c.coords(i)[0:2] for i in c.find_withtag('token')]
-
-        rounded = tf.smoothen(heightsList, tol, minL, maxL)
-        for item in c.find_withtag('token'):
-            x, z = rounded.pop(0)[0:2]
-            c.coords(item, x, z, x, z)
-        #draw slope
-        self._scrollregion()
-
-    def _translateDialog(self):
-        dialog = TranslateDialog(self)
-        self.wait_window(dialog.top)
-
-    def _translate(self, z=0):
-        '''Translate all heightpoints along z axis'''
-        self._appendToHistory()
-        self._future = []
-        for item in self.canvas.find_withtag('token'):
-            delta_z = z*self._y_scale
-            self.canvas.move(item, 0, delta_z)
-        #draw slope
-        self._scrollregion()
-
-    def _resampleDialog(self):
-        dialog = ResampleDialog(self)
-        self.wait_window(dialog.top)
-
-    def _resample(self, minstep=2):
-        '''Change height data resolution'''
-        struct = self.structure
-        heightsList = self._gen_tokenlist()
-        
-        resampled = []
-        for bank in struct.banks:
-            unk = bank['unk']
-            bankheights = heightsList[unk:unk+bank['divNum']+1]
-            bank['unk'] = len(resampled)
-            resampled+=(tf.resample(bankheights, minstep))
-            bank['divNum'] = len(resampled)-bank['unk']
-        resampled.append(heightsList[-1])
-        struct.tokens = [(token[0], token[1]-(self._first_y/self._y_scale)) for token in resampled]
-        struct.mod = [token[1] for token in struct.tokens]
-        struct.update_data()
-
-        self._load_ted(struct)
-
-    def FButtonPress(self, event):
-        '''Flatten section covered by brush'''
-        self._appendToHistory()
-        self._future = []
-        self.get_drag_data()
-        
-        '''Transformation'''
-        try:
-            A = self._drag_data['items'].pop(0)
-            A = self.canvas.coords(A)
-            B = self._drag_data['items'].pop(-1)
-            B = self.canvas.coords(B)
-
-            for P in self._drag_data['items']:
-                new_xy = tf.flatten(A, B, self.canvas.coords(P))
-                self.canvas.coords(P, new_xy)
-        except IndexError:
-            None
-
-        self._drag_data['items'] = []
-        # draw slope
-        self._find_slope()
-
-    def SButtonPress(self, event):
-        def _append_slope(self, item):
-            coords = self.canvas.coords(item)
-            slope = [i[1] for i in self._slopes if i[0] == coords[0]][0]
-            item = (coords[0], coords[1], slope*self._y_scale)
-            return item
-        
-        '''Select objects'''
-        self._appendToHistory()
-        self._future = []
-        self.get_drag_data()
-
-        '''Transformation'''
-        try:
-            A = self._drag_data['items'].pop(0)
-            A = _append_slope(self, A)
-            B = self._drag_data['items'].pop(-1)
-            B = _append_slope(self, B)
-
-            for P in self._drag_data['items']:
-                new_xy = tf.spline(A, B, self.canvas.coords(P))
-                self.canvas.coords(P, new_xy)
-        except IndexError:
-            None
-
-        self._drag_data['items'] = []
-        # draw slope
-        self._find_slope()
-
-    def _returnkey(self, event):
-        self.focus_set()
-
-    def zkey(self, event):
-        self.Zoom()
-
-    def altzkey(self, event):
-        self.Zoom(zoom=0.5)
-
-    def Zoom(self, zoom=2, axis='z'):
-        '''Zoom in and out on the X or Z axis'''
-        
-        if axis == 'x':
-            index = 0
-            self._x_scale *= zoom
-        else:
-            index = 1
-            self._y_scale *= zoom
-            try:
-                self._first_y *= zoom
-            except:
-                None
-
-        for item in self.canvas.find_withtag('token'):
-            coords = self.canvas.coords(item) #get the coords of the item
-            coords[index] *= zoom #scale the coordinate specified by the keystroke
-            x, z = coords[0], coords[1]
-            self.canvas.coords(item, x, z, x, z) #apply the new coordinates
-
-        for item in self.canvas.find_withtag('origin'):
-            coords = self.canvas.coords(item)
-            coords[1] *= zoom
-            coords[3] *= zoom
-            self.canvas.coords(item, coords[0], coords[1], coords[2], coords[3])
-
-        self._scrollregion()
+    ### SCROLLING AND RESIZING -------------------------------------------------------------------
 
     def _my_configure(self, event):
         self.pack(side=tk.LEFT,expand=True,fill=tk.BOTH)
@@ -1174,19 +1037,6 @@ class ElevationEditor(tk.Frame):
                 self._low_x = x
             if self._low_y == None or y < self._low_y:
                 self._low_y = y
-                
-    def Button3Press(self, event):
-        self.canvas.scan_mark(event.x, event.y)
-        self.c_vruler.scan_mark(0, event.y)
-        for canvas in (self.graphCanvas, self.hruler):
-            canvas.scan_mark(event.x, 0)
-
-    def MouseScroll(self, event):
-        g = 2
-        self.canvas.scan_dragto(event.x, event.y, gain=g)
-        self.c_vruler.scan_dragto(0, event.y, gain=g)
-        for canvas in (self.graphCanvas, self.hruler):
-            canvas.scan_dragto(event.x, 0, gain=g)
 
     def _scrollregion(self, tokenlist = None):
         self._find_xy(tokenlist = tokenlist)
@@ -1216,7 +1066,5 @@ class ElevationEditor(tk.Frame):
     
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    #token_list = [(i*0.9, 0) for i in range(10, 1000, 7)]
-    app = ElevationEditor(root)  
+    app = ElevationEditor()  
     app.mainloop()
