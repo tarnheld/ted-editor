@@ -2,6 +2,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import font as tkFont
 import transformations as tf
+import os
 
 class ContrastDialog:
 
@@ -273,12 +274,12 @@ class GuidePanel(tk.Frame):
         f = tk.Frame(self)
         f.columnconfigure(1, weight=1)
         f.grid(sticky='we')
-        
-        self.expandButton = IconButton(f, 'folded.gif', command=self.expandToggle)
+        here = os.path.dirname(__file__)
+        self.expandButton = IconButton(f, os.path.join(here, 'Icons', 'folded.gif'), command=self.expandToggle)
         self.expandButton.grid(row=0, column=0, padx=2)
         l = tk.Label(f, text=self.title(), font=self.labelFont, anchor='w')
         l.grid(row=0, column=1, sticky='we')
-        b = IconButton(f, 'xicon.gif', command=self.close)
+        b = IconButton(f, os.path.join(here, 'Icons', 'xicon.gif'), command=self.close)
         b.grid(row=0, column=2, padx=2)
 
         sep = ttk.Separator(self, orient=tk.HORIZONTAL)
@@ -302,14 +303,15 @@ class GuidePanel(tk.Frame):
         self.destroy()
 
     def expandToggle(self):
+        here = os.path.dirname(__file__)
         b = self.expandButton
         if self.expanded:
             self.expanded=False
-            b.icon = tk.PhotoImage(file='folded.gif')
+            b.icon = tk.PhotoImage(file=os.path.join(here, 'Icons', 'folded.gif'))
             self.collapse()
         else:
             self.expanded=True
-            b.icon = tk.PhotoImage(file='expanded.gif')
+            b.icon = tk.PhotoImage(file=os.path.join(here, 'Icons', 'expanded.gif'))
             self.expand()
         b.config(image=self.expandButton.icon)
 
@@ -542,14 +544,13 @@ class GuidePanel(tk.Frame):
         
 
 class CloseButton(tk.Button):
-
     def __init__(self, parent, **kwargs):
+        here = os.path.dirname(__file__)
         tk.Button.__init__(self, parent, **kwargs)
-        self.icon = tk.PhotoImage(file='xicon.gif')
+        self.icon = tk.PhotoImage(file=os.path.join(here, 'Icons', 'xicon.gif'))
         self.config(image=self.icon, bd=0)
-
+        
 class IconButton(tk.Button):
-
     def __init__(self, parent, icon, **kwargs):
         tk.Button.__init__(self, parent, **kwargs)
         self.icon = tk.PhotoImage(file=icon)
