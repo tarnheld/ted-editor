@@ -2223,8 +2223,8 @@ class App(tk.Frame):
       vl = d.vend3d - d.vstart3d
       vm = (d.vstart3d + d.vend3d) / 2 # scale midpoint
       vms = vm * sf
-      vs = vms - l/2
-      ve = vms + l/2
+      vs = vms - vl/2
+      ve = vms + vl/2
       decos.append(TedDeco(uuid=d.uuid,railtype=d.railtype,vstart3d = vs, vend3d = ve,tracktype=d.tracktype))
 
     # build new tedfile
