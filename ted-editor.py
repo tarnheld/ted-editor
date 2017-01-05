@@ -2672,9 +2672,9 @@ class App(tk.Frame):
     cx,cy = self.canvas.canvasxy(ev.x,ev.y)
 
     sf = 1.1
-    try:
+    if not (ev.delta == 0): # Wheel event
       if (ev.delta < 0): sf = 1/sf
-    except:
+    else: # Button 4/5 event
       if (ev.num == 5): sf = 1/sf
 
     # scale all objects on canvas
