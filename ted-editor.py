@@ -2499,6 +2499,8 @@ class App(tk.Frame):
     self.canvas.bind("<ButtonRelease-2>", self.onDragEnd)
     self.canvas.bind("<Shift-Key-d>", self.onDragToggle)
     self.canvas.bind("<MouseWheel>", self.onWheel)
+    self.canvas.bind("<Button-4>", self.onWheel)
+    self.canvas.bind("<Button-5>", self.onWheel)
     self.canvas.bind("<Motion>", self.onDrag)
     self.canvas.bind("<Key-m>", self.onToggleManip)
     self.canvas.bind("<Key-b>", self.onBankingEdit)
@@ -2665,12 +2667,15 @@ class App(tk.Frame):
       self.adjustImg()
 
   def onWheel(self, ev):
-    #  print("Wheel",ev.delta,ev.state)
+    print("Wheel",ev.delta,ev.state,ev.num)
     sys.stdout.flush()
     cx,cy = self.canvas.canvasxy(ev.x,ev.y)
 
     sf = 1.1
-    if (ev.delta < 0): sf = 1/sf
+    try:
+      if (ev.delta < 0): sf = 1/sf
+    except:
+      if (ev.num == 5): sf = 1/sf
 
     # scale all objects on canvas
     self.canvas.zoom(cx, cy, sf)
