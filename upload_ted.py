@@ -61,7 +61,8 @@ def inflate(data):
 
 def checkTedDataValidity(data):
     if data[0:6] == b'GT6TED':
-        return deflate(data, 6)
+        #return deflate(data, 6)
+        return data
     elif data[0:4] == b'\x80\xdc\xc2\x98':
         return data
     else:
@@ -83,8 +84,8 @@ def checkCookieValidity(cookie):
 def uploadTedData(data, title, cookie, username):
     headers = {'Cookie': 'JSESSIONID=' + cookie}
     files = {'data': ('gt6.ted', data)}
-    data = {'job': (None, '1'), 'user_id': (None, username), 'title': (None, title)}
-    res = requests.post('https://www.gran-turismo.com/jp/api/gt6/course/', files=files, data=data, headers=headers, verify=False)
+    exdata = {'job': (None, '1'), 'user_id': (None, username), 'title': (None, title)}
+    res = requests.post('https://www.gran-turismo.com/jp/api/gt6/course/', files=files, data=exdata, headers=headers, verify=False)
     uploadResult = json.loads(res.text)['result']
     if uploadResult == 1:
         return True
