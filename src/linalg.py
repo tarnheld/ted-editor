@@ -141,7 +141,7 @@ def unit(v):
   return v/n
 # square matrix filled with v in each row
 def vmatrix(v):
-  return matrix([[vi] for vi in v])
+  return np.array([[vi] for vi in v])
 
 # parallel part of x to y: the projection of x onto y
 def para(x,y):

@@ -88,3 +88,13 @@ def getTransitionTypes(root):
 
 def getUnitLength(railunit):
     return float(railunit.find("unitLength").text)
+
+def getRailUnitIndex(root):
+    index=[]
+    inverse={}
+    for rd in root.iter("railDictionary"):
+        for idx,uuid in enumerate(rd.find("uuid")):
+            uuid = int(uuid.find("unsignedLong").text)
+            index.append(uuid)
+            inverse[uuid] = idx
+    return index,inverse

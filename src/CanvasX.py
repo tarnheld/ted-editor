@@ -1,6 +1,8 @@
-import tkinter as tk
-import linalg as la
 import itertools as it
+import tkinter as tk
+
+from src import linalg as la
+
 def group_coords(coordlist, n, fillvalue=0):
   args = [iter(coordlist)] * n
   return it.zip_longest(*args, fillvalue=fillvalue)
