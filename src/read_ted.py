@@ -58,7 +58,8 @@ class TrackType(Enum):
 #    HomeStraight = 4
 class Side(Enum):
     Right = 0
-    Left = 1
+    Left  = 1
+    Start = 2
 class Track(Enum):
     Null = 0
     Curb = 1
@@ -131,13 +132,13 @@ f:vpos3d
 
 road="""
 Q:uuid
-i:flag
+i:side
 f:vstart3d
 f:vend3d
 """
 decoration="""
 Q:uuid
-I:railtype
+I:side
 f:vstart3d
 f:vend3d
 I:tracktype
@@ -283,6 +284,6 @@ if __name__ == "__main__":
             if x.uuid in railunit:
                 print(i,x,uuids[x.uuid], x.vend3d - x.vstart3d,railunit[x.uuid].find("unitLength").text, RailType(int(railunit[x.uuid].find("decoratedRailType").text)), TrackType(x.tracktype).name)
             else:
-                print(i,x, x.vend3d - x.vstart3d, RailType(x.railtype).name,TrackType(x.tracktype).name)
+                print(i,x, x.vend3d - x.vstart3d, Side(x.side).name,TrackType(x.tracktype).name)
         
         

@@ -93,6 +93,14 @@ class SavedFSM(FSM):
         self.history.append(deepcopy(self.save()))  # save copy of control curve
         self.future = []  # clear redos
         print("Save", len(self.future), len(self.history))
+    def historyClear(self):
+        self.history = []  # clear undos
+        self.future  = []  # clear redos
+    def historyTakeover(self,other):
+        self.history.extend(other.history)
+        self.future  = []  # clear redos
+        self.restore(other.save())
+        print("takeover", len(self.future), len(self.history))
     def save(self):
         print("please implement save in your derived class!!!")
     def restore(self, data):

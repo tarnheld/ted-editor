@@ -64,7 +64,8 @@ class CanvasX(tk.Canvas):
                 #tw = vapply(xform,la.coords(w,0,0,0))
                 #th = vapply(xform,la.coords(0,h,0,0))
                 self.coords(cid,tc[0]-w/2,tc[1]-h/2,tc[0]+h/2,tc[1]+h/2)
-                
+            else:
+                print("unknown type",t,cid)
     def zoom(self, x, y, s):
         """Zoom Canvas with center x,y and scale s."""
 

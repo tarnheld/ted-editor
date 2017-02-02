@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-tree = ET.parse('andalusia.raildef')
+tree = ET.parse('rd/andalusia.raildef')
 root = tree.getroot()
 from enum import Enum
 class RailType(Enum):
@@ -117,13 +117,31 @@ for rt,uuid in roadtypes.items():
                 
 print("--------transition types-------")
 trans = {}
+transgroups = []
 for rg in root.iter("RailGroup"):
+    transgroup = [[],[]]
     for rgi in rg.find("itemTransition"):
         uuid = int(rgi.find("uuid").text)
+        transgroup[0].append(uuid)
         trans[uuid] = railunit[uuid]
+    for rgl in rg.find("itemLoop"):
+        uuid = int(rgl.find("uuid").text)
+        transgroup[1].append(uuid)
+    for rgl in rg.find("itemRandom"):
+        uuid = int(rgl.find("uuid").text)
+        transgroup[1].append(uuid)
+    if transgroup[0]:
+        transgroups.append(transgroup)
+    
 
 for uuid,ru in trans.items():
-    print(uuid,uuids[uuid])
+    print("trans:",uuid,uuids[uuid])
+for tg in transgroups:
+    print ("transgroup:")
+    for uuid in tg[0]:
+        print ("  trans:", uuids[uuid])
+    for uuid in tg[1]:
+        print ("   transloop:", uuids[uuid])
             
 #slots = {}
 #print("RailDictionary")

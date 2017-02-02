@@ -43,51 +43,45 @@ def getRailRoot(path):
     root = tree.getroot()
     return root
 def getRailDict(root):
-    uuids = {}
-    names = { "Unknown" : [] }
+    names = {}
     railtypes = {}
     railunit  = {}
     for ru in root.iter("RailUnit"):
         uuid = int(ru.find("uuid").text)
-        rt   = int(ru.find("decoratedRailType").text)
-             
         railunit[uuid] = ru
-        uuids[uuid]    = "Unknown " + RailType(rt).name
-        
-        names["Unknown"].append(uuid) # unknown for now...
-        
+
+        rt   = int(ru.find("decoratedRailType").text)
+
         if rt in railtypes:
             railtypes[rt].append(uuid)
         else:
             railtypes[rt] = [uuid]
 
+        names[uuid] = RailType(rt).name + "_" + str(len(railtypes[rt]))
+
+    # get names from railgroup items
     for rgi in root.iter("RailGroupItem"):
         uuid = int(rgi.find("uuid").text)
         name =     rgi.find("name").text
-        uuids[uuid] = name
-        names[name] = uuid
-        if uuid in names["Unknown"]:
-            names["Unknown"].remove(uuid)
-
-
-    for type,tuuids in railtypes.items():
-        uidx = 1
-        for uuid in tuuids:
-            if uuid in names["Unknown"]:
-                uuids[uuid] = uuids[uuid] + " " + str(uidx)
-                uidx += 1
-    return railtypes, uuids, railunit
+        names[uuid] = name
+        
+    return railtypes, names, railunit
 
 def getTransitionTypes(root):
     trans = {}
     for rg in root.iter("RailGroup"):
         for rgi in rg.find("itemTransition"):
             uuid = int(rgi.find("uuid").text)
-            trans[uuid] = uuid
+            trans[uuid] = (uuid,rg)
     return trans
 
 def getUnitLength(railunit):
     return float(railunit.find("unitLength").text)
+def getUnitWidths(railunit):
+    widths = []
+    for mw in railunit.findall("modelWidth/float"):
+            widths.append(float(mw.text))
+    return widths
 
 def getRailUnitIndex(root):
     index=[]

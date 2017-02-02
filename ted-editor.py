@@ -2,6 +2,7 @@ import colorsys
 import math as m
 import pickle
 import sys
+import time
 import collections
 import tkinter as tk
 from copy import deepcopy
@@ -19,40 +20,83 @@ import src.biarc as biarc
 
 from src.fsm import SavedFSM
 
+######################################################################
+class Heightmap:
+    def __init__(self, file, half_width):
+        self.heightmap = np.load(file)
+        self.half_width = half_width
+        print("loaded heightmap from", file)
+    def heightAt(self,p):
+        def interpol_bi(im, x, y):
+            x = np.asarray(x)
+            y = np.asarray(y)
+            
+            x0 = np.floor(x).astype(int)
+            x1 = x0 + 1
+            y0 = np.floor(y).astype(int)
+            y1 = y0 + 1
+            
+            x0 = np.clip(x0, 0, im.shape[1] - 1)
+            x1 = np.clip(x1, 0, im.shape[1] - 1)
+            y0 = np.clip(y0, 0, im.shape[0] - 1)
+            y1 = np.clip(y1, 0, im.shape[0] - 1)
+            
+            Ia = im[y0, x0]
+            Ib = im[y1, x0]
+            Ic = im[y0, x1]
+            Id = im[y1, x1]
+            
+            wa = (x1 - x) * (y1 - y)
+            wb = (x1 - x) * (y - y0)
+            wc = (x - x0) * (y1 - y)
+            wd = (x - x0) * (y - y0)
+        
+            return wa * Ia + wb * Ib + wc * Ic + wd * Id
+        # 2d numpy array containing the data
+        hmm = self.heightmap["heightmap"]
+        # height values corresponding to 0 and 1 in the height map
+        hme = self.heightmap["extents"]   
+        hmw = hmm.shape[0]
+        hmh = hmm.shape[1]
+        ex = self.half_width
+        ip = (p + ex) / (2 * ex) * la.coords(hmw, hmh)
+        hs = interpol_bi(hmm, ip[0], ip[1])
+        return hs * hme[1] + (1 - hs) * hme[0]
+######################################################################
+# global variables
+the_scenery = {
+    "Andalusia"   : {"id": 3,
+                     "ct": "hm/andalusia-contours.npz",
+                     "npz": "hm/andalusia.npz",
+                     "ex": 3499.99975586,
+                     "rd": "rd/andalusia.raildef"},
+    "Eifel"       : {"id": 2,
+                     "ct": "hm/eiffel-contours.npz",
+                     "npz": "hm/eiffel.npz",
+                     "ex": 9600.0,
+                     "rd": "rd/eifel.raildef"},
+    "Eifel Flat"  : {"id": 5,
+                     "ct": "hm/eiffel-flat-contours.npz",
+                     "npz": "hm/eiffel-flat.npz",
+                     "ex": 9600.0,
+                     "rd": "rd/eifel-flat.raildef"},
+    "Death Valley": {"id": 1,
+                     "ct": "hm/death-valley-contours.npz",
+                     "npz": "hm/death-valley.npz",
+                     "ex": 3592.67358398,
+                     "rd": "rd/death-valley.raildef"},
+}
+the_scenery = collections.OrderedDict(sorted(the_scenery.items()))
+the_heightmap = Heightmap(the_scenery["Andalusia"]["npz"],
+                          the_scenery["Andalusia"]["ex"])
+
+###########################################################################
+# enable imports in third party directory eledit
 sys.path.append("eledit")
 import eledit.eledit as eed
 import eledit.readfile_2 as eed_rf2
-
 import src.upload_ted as ut
 
-##############################################################################
-
-###########################################################################
-def interpol_bi(im, x, y):
-    x = np.asarray(x)
-    y = np.asarray(y)
-
-    x0 = np.floor(x).astype(int)
-    x1 = x0 + 1
-    y0 = np.floor(y).astype(int)
-    y1 = y0 + 1
-
-    x0 = np.clip(x0, 0, im.shape[1] - 1)
-    x1 = np.clip(x1, 0, im.shape[1] - 1)
-    y0 = np.clip(y0, 0, im.shape[0] - 1)
-    y1 = np.clip(y1, 0, im.shape[0] - 1)
-
-    Ia = im[y0, x0]
-    Ib = im[y1, x0]
-    Ic = im[y0, x1]
-    Id = im[y1, x1]
-
-    wa = (x1 - x) * (y1 - y)
-    wb = (x1 - x) * (y - y0)
-    wc = (x - x0) * (y1 - y)
-    wd = (x - x0) * (y - y0)
-
-    return wa * Ia + wb * Ib + wc * Ic + wd * Id
 ###########################################################################
 class Biarc:
     def __init__(self, p0, t0, p1, t1, r):
@@ -70,18 +114,15 @@ class Biarc:
         self.cp2 = biarc.circleparam(self.J, self.p1, self.Jt)
     def joint(self):
         return self.J
-
     def circleparameters(self):
         c1, k1, a1, l1 = self.cp1
         c2, k2, a2, l2 = self.cp2
 
         return c1, k1, a1, l1, c2, k2, a2, l2
-
     def length(self):
         c1, k1, a1, l1 = self.cp1
         c2, k2, a2, l2 = self.cp2
         return l1 + l2
-
     def offset(self, o):
         b = deepcopy(self)
         b.h1 = biarc.offset_circle(b.h1, o)
@@ -146,17 +187,6 @@ class Biarc:
             minl = l1 + (aa2 / abs(k2) if k2 != 0 else t2 * l2)
         return mind, minl
 ###########################################################################
-def line_seg_distance_sqr_and_length(p0, p1, p):
-    chord = p0 - p1
-    top = p0 - p
-    pa = la.para(top, chord)
-    if la.dot(pa, chord) < 0:
-        return la.norm2(p - p0), 0  # distance to first point
-    elif la.norm2(chord) < la.norm2(pa):
-        return la.norm2(p - p1), la.norm(chord)  # distance to last point
-    else:
-        return la.norm2(la.perp(top, chord)), la.norm(pa)  # distance to line segment
-###########################################################################
 class Straight:
     def __init__(self, p0, p1):
         self.p0 = p0
@@ -171,7 +201,17 @@ class Straight:
     def eval_t(self, t):
         return la.unit(self.p1 - self.p0)
     def dist_sqr_at_l(self, p):
-        "return squared distance to p and length of segment at nearest point"
+        """return squared distance to p and length of segment at nearest point"""
+        def line_seg_distance_sqr_and_length(p0, p1, p):
+            chord = p0 - p1
+            top = p0 - p
+            pa = la.para(top, chord)
+            if la.dot(pa, chord) < 0:
+                return la.norm2(p - p0), 0  # distance to first point
+            elif la.norm2(chord) < la.norm2(pa):
+                return la.norm2(p - p1), la.norm(chord)  # distance to last point
+            else:
+                return la.norm2(la.perp(top, chord)), la.norm(pa)  # distance to line segment
         return line_seg_distance_sqr_and_length(self.p0, self.p1, p)
     def transform(self, xform):
         self.p0 = biarc.transform_point(self.p0, xform)
@@ -181,6 +221,114 @@ class Straight:
         c2, k2, a2, l2 = (0, 0), 0, 0, 0
 
         return c1, k1, a1, l1, c2, k2, a2, l2
+###########################################################################
+class CCPoint:
+    def __init__(self, point=la.coords(0, 0), tangent=None):
+        self.point = point
+        self.tangent = tangent
+###########################################################################
+class SegType(Enum):
+    Straight = 1
+    Biarc = 2
+###########################################################################
+def canvas_create_circle(canvas, p, r, **kw):
+    "convenience canvas draw routine"
+    return canvas.create_oval([p[0] - r, p[1] - r, p[0] + r, p[1] + r], **kw)
+###########################################################################
+class Banking:
+    def __init__(self, angle=0, prev_len=0, next_len=0):
+        self.angle = angle
+        self.prev_len = prev_len
+        self.next_len = next_len
+    def reverse(self):
+        self.angle = -self.angle
+        self.prev_len, self.next_len = self.next_len, self.prev_len
+###########################################################################
+class CCSegment:
+    def __init__(self, p1, p2, type=SegType.Straight, biarc_r=0.5):
+        self.ps = p1
+        self.pe = p2
+        self.type = type
+        self.biarc_r = biarc_r
+        self.banking = [Banking(), Banking()]
+        self.heights = [[], []]
+        self.seg = None
+        self.heights_need_update = True
+
+        self.setup()
+    def setup(self):
+        if self.type is SegType.Straight:
+            self.ps.tangent = self.pe.tangent = la.unit(self.pe.point - self.ps.point)
+            self.seg = Straight(self.ps.point, self.pe.point)
+            #self.np = 2
+        else:
+            if self.pe.tangent is None:
+                self.pe.tangent = la.unit(la.refl(self.ps.tangent,
+                                                  self.ps.point - self.pe.point))
+
+            self.seg = Biarc(self.ps.point, self.ps.tangent,
+                             self.pe.point, self.pe.tangent,
+                             self.biarc_r)
+        self.heights_need_update = True
+    def offset(self,o):
+        return self.seg.offset(o)
+    def length(self):
+        return self.seg.length()
+    def eval(self,t):
+        return self.seg.eval(t)
+    def eval_t(self,t):
+        return self.seg.eval_t(t)
+    def shapeparameters(self):
+        """ returns end points, lengths, curvature, center of circle of subsegments"""
+        divl = 4.0
+        mindiv = 6
+        if self.type is SegType.Straight:
+            l = self.length()
+            div = max(mindiv, int(m.ceil(l / divl)))
+            return [(self.pe.point, l, div, 0, la.coords(0, 0))]
+        else:
+            c1, k1, a1, l1, c2, k2, a2, l2 = self.seg.circleparameters()
+            div1 = max(mindiv, int(m.ceil(l1 / divl)))
+            div2 = max(mindiv, int(m.ceil(l2 / divl)))
+            return [(self.seg.J, l1, div1, k1, c1), (self.pe.point, l2, div2, k2, c2)]
+    def num_subsegments(self):
+        return len(self.shapeparameters())
+    def set_heights(self, heights):
+        self.heights = heights
+        self.heights_need_update = False
+        sys.stdout.flush()
+    def calc_heights(self, heightmap):
+        sps = self.shapeparameters()
+
+        hs = heightmap.heightAt(self.ps.point)
+        for j, sp in enumerate(sps):
+            hgts = []
+            ep, l, div, k, center = sp
+            he = heightmap.heightAt(ep)
+            for d in range(div):
+                hgts.append(hs * (div - d) / div + he * d / div)
+            self.heights[j] = hgts
+            hs = he
+        self.heights_need_update = False
+    def reverse(self):
+        # reverse endpoints from point array
+        self.ps, self.pe = self.pe, self.ps
+        # reverse biarc parameter
+        self.biarc_r = 1 - self.biarc_r
+        # banking and height data reverse
+        self.banking.reverse()
+        for b in self.banking:
+            b.reverse()
+        self.heights.reverse()
+        for h in self.heights:
+            h.reverse()
+        self.setup()
+        #self.heights_need_update = False
+    def transform(self, xform):
+        self.seg.transform(xform)
+        # TODO: scale offset without altering width
+        #for i, p in enumerate(self.poly):
+        #    self.poly[i] = biarc.transform_point(p, xform)
 ###########################################################################
 def offsetLine(segment, ts, te, o, n):
     so = segment.offset(o)
@@ -212,221 +360,45 @@ def offsetLine(segment, ts, te, o, n):
         p = so.eval(t)
         cas.append(p)
     return cas
-
 def offsetPolygon(segment, ts, te, o1, o2, n):
     return offsetLine(segment, ts, te, o1, n) + offsetLine(segment, te, ts, o2, n)
 ###########################################################################
-class CCPoint:
-    def __init__(self, point=la.coords(0, 0), tangent=None):
-        self.point = point
-        self.tangent = tangent
-###########################################################################
-class SegType(Enum):
-    Straight = 1
-    Biarc = 2
-###########################################################################
-def canvas_create_circle(canvas, p, r, **kw):
-    "convenience canvas draw routine"
-    return canvas.create_oval([p[0] - r, p[1] - r, p[0] + r, p[1] + r], **kw)
-
-class Banking:
-    def __init__(self, angle=0, prev_len=0, next_len=0):
-        self.angle = angle
-        self.prev_len = prev_len
-        self.next_len = next_len
-
-###########################################################################
-class CCSegment:
-    def __init__(self, p1, p2, type=SegType.Straight, width=8, biarc_r=0.5):
-        self.ps = p1
-        self.pe = p2
-        self.type = type
-        self.width = width
-        self.biarc_r = biarc_r
-        self.banking = [Banking(), Banking()]
-        self.heights = [[], []]
-        self.seg = None
-        self.np = 0
-        self.poly = []
-        self.heights_need_update = True
-
-        self.setup()
-
-    def setup(self):
-        if self.type is SegType.Straight:
-            self.ps.tangent = self.pe.tangent = la.unit(self.pe.point - self.ps.point)
-            self.seg = Straight(self.ps.point, self.pe.point)
-            self.np = 2
-        else:
-            if self.pe.tangent is None:
-                self.pe.tangent = la.unit(la.refl(self.ps.tangent,
-                                                  self.ps.point - self.pe.point))
-
-            self.seg = Biarc(self.ps.point, self.ps.tangent,
-                             self.pe.point, self.pe.tangent,
-                             self.biarc_r)
-            self.np = 32
-        self.poly = offsetPolygon(self.seg, 0, 1, -self.width / 2, self.width / 2, self.np)
-        # print("seg setup update!")
-        # sys.stdout.flush()
-    def length(self):
-        return self.seg.length()
-    def eval(self,t):
-        return self.seg.eval(t)
-    def eval_t(self,t):
-        return self.seg.eval_t(t)
-    def shapeparameters(self):
-        """ returns end points, lengths, curvature, center of circle of subsegments"""
-        divl = 4.0
-        mindiv = 6
-        if self.type is SegType.Straight:
-            l = self.length()
-            div = max(mindiv, int(m.ceil(l / divl)))
-            return [(self.pe.point, l, div, 0, la.coords(0, 0))]
-        else:
-            c1, k1, a1, l1, c2, k2, a2, l2 = self.seg.circleparameters()
-            div1 = max(mindiv, int(m.ceil(l1 / divl)))
-            div2 = max(mindiv, int(m.ceil(l2 / divl)))
-            return [(self.seg.J, l1, div1, k1, c1), (self.pe.point, l2, div2, k2, c2)]
-    def num_subsegments(self):
-        return len(self.shapeparameters())
-    def set_heights(self, heights):
-        self.heights = heights
-        self.heights_need_update = False
-        # print("seg height update!")
-        sys.stdout.flush()
-    def calc_heights(self, hm, ex):
-        def heightAt(p, ex, hme, hmw, hmh):
-            ip = (p + ex) / (2 * ex) * la.coords(hmw, hmh)
-            hs = interpol_bi(hmm, ip[0], ip[1])
-            return hs * hme[1] + (1 - hs) * hme[0]
-
-        hme = hm["extents"]
-        hmm = hm["heightmap"]
-        hmw = hmm.shape[0]
-        hmh = hmm.shape[1]
-
-        sps = self.shapeparameters()
-
-        hs = heightAt(self.ps.point, ex, hme, hmw, hmh)
-        for j, sp in enumerate(sps):
-            hgts = []
-            ep, l, div, k, center = sp
-            he = heightAt(ep, ex, hme, hmw, hmh)
-            for d in range(div):
-                hgts.append(hs * (div - d) / div + he * d / div)
-            self.heights[j] = hgts
-            hs = he
-        # print("seg height calc!")
-        # sys.stdout.flush()
-        self.heights_need_update = False
-        # exhgts = hgts[-6:-1] + hgts + hgts[0:6]
-        # print(len(hgts),len(exhgts))
-        # ex = len(exhgts) - len(hgts)
-        # for i in range(len(hgts)):
-        #  ma = exhgts[i:i+ex]
-        #  #print("before",hgts[i],ex)
-        #  hgts[i] = sum(ma)/len(ma)
-        #  #print("after",hgts[i])
-    def reverse(self):
-        # reverse endpoints from point array
-        self.ps, self.pe = self.pe, self.ps
-        # reverse biarc parameter
-        self.biarc_r = 1 - self.biarc_r
-        # TODO: banking and height data reverse
-        self.setup()
-    def transform(self, xform):
-        self.seg.transform(xform)
-        # TODO: scale offset without altering width
-        for i, p in enumerate(self.poly):
-            self.poly[i] = biarc.transform_point(p, xform)
-    def draw(self, canvas, cids=None, **kw):
-        if not cids: cids = []
-        cids.append(canvas.create_polygon([(x[0], x[1]) for x in self.poly], **kw))
-        return cids
-    def drawText(self, canvas, cids=None, **kw):
-        if not cids: cids = []
-        # cids.extend([canvas_create_circle(canvas,x,5) for x in self.poly])
-        if self.type is SegType.Straight:
-            h = self.seg.eval(0.5)
-            l = self.seg.length()
-            txt = "{:.0f}".format(l)
-            cids.append(canvas.create_text([h[0], h[1]], text=txt, tags="segment"))
-        else:
-            c1, k1, a1, l1, c2, k2, a2, l2 = self.seg.circleparameters()
-            h1 = self.seg.eval(0.5 * l1 / (l1 + l2))
-            h2 = self.seg.eval((l1 + 0.5 * l2) / (l1 + l2))
-            # h1 = c1
-            # h2 = c2
-
-            if abs(k1) < 1 / 300:
-                s1text = "\n{:.0f}".format(l1)
-            else:
-                s1text = "{:.0f} R\n{:.0f}".format(1 / k1, l1)
-            if abs(k2) < 1 / 300:
-                s2text = "\n{:.0f}".format(l2)
-            else:
-                s2text = "{:.0f} R\n{:.0f}".format(1 / k2, l2)
-            cids.append(canvas.create_text([h1[0], h1[1]],
-                                           text=s1text,
-                                           tags="segment"))
-            cids.append(canvas.create_text([h2[0], h2[1]],
-                                           text=s2text,
-                                           tags="segment"))
-        return cids
-    def drawExtra(self, canvas, cids=None, **kw):
-        if not cids: cids = []
-        if self.type is SegType.Straight:
-            return cids
-        t1 = biarc.bezier2_dr(1, self.seg.h1)
-        t2 = biarc.bezier2_dr(0, self.seg.h2)
-        J = self.seg.joint()
-
-        cids.append(canvas.create_line([self.ps.point[0], self.ps.point[1], self.pe.point[0], self.pe.point[1]],
-                                       tags="segment"))
-        cids.append(canvas.create_line([J[0], J[1], J[0] + t1[0], J[1] + t1[1]], tags="segment"))
-
-        cas = []
-        nn = 32
-        cj, kj, aj, lj = self.seg.circleparameters()
-        for j in range(nn):
-            t = biarc.lerp(j / (nn - 1), -1, 1)
-            tt = biarc.bc_arclen_t(abs(t), aj if t > 0 else 2 * m.pi - aj)
-            p = self.seg.evalJ(tt if t > 0 else -tt)
-            cas.append(p)
-        cids.append(canvas.create_line([(x[0], x[1]) for x in cas], tags="segment"))
-        return cids
-###########################################################################
-class RoadItem:
-    def __init__(self, l, raildef):
-        self.l = l
-        self.raildef = raildef
-class DecoItem:
-    def __init__(self, l, raildef):
-        self.l = l
-        self.raildef = raildef
-###########################################################################
 class ControlCurve:
-    def __init__(self):
-        self.isOpen = True
-        self.point = []
-        self.segment = []
-        self.road = []
-        self.deco = []
+    def __init__(self,width):
+        self.width      = width
+        self.scenery    = None
+        self.isOpen     = True
+        self.point      = []
+        self.segment    = []
+        self.checkpoint = []
+        self.road       = []
+        self.deco       = []
+    def __segmentsof(self, cp):
+        return [s for s in self.segment if s.ps is cp or s.pe is cp]
+    def __neighborsof(self, seg):
+        return [s for s in self.segment if seg.ps is s.pe or seg.pe is s.ps]
+    def __setupCp(self, cp):
+        so = self.__segmentsof(cp)
+        for s in so:
+            if s.type is SegType.Straight:
+                return self.__setupSeg(s)
+            else:
+                s.setup()
+        return so
+    def __setupSeg(self, seg):
+        seg.setup()
+        nb = self.__neighborsof(seg)
+        for s in nb:
+            s.setup()
+        nb.append(seg)
+        return nb
+
     def length(self):
         "total length of control curve"
         tl = 0
         for s in self.segment:
             tl += s.length()
         return tl
-    def lengthsAt(self, seg):
-        "length of control curve up to segment and length of segment"
-        tl = 0
-        for s in self.segment:
-            if s is seg:
-                return tl, s.length()
-            tl += s.length()
-        return tl, 0
     def segmentAndTAt(self, l):
         seg = None
         tl = l
@@ -451,29 +423,6 @@ class ControlCurve:
     def pointAndTangentAt(self, l):
         s, t = self.segmentAndTAt(l)
         return s.eval(t), s.eval_t(t)
-    def offsetPolygonAt(self, ls, le, w):
-        """ constructs an offset polygon of width w along the track from ls to le"""
-        tls = min(ls, le)
-        tle = max(ls, le)
-        sl = 0
-        front = []
-        back = []
-        done = False
-        for s in self.segment:
-            sl = s.length()
-            if tls < sl:
-                ts = tls / sl if tls > 0  else 0
-                te = tle / sl if tle < sl else 1
-                # print("poly",ts,te,tls,tle)
-                front += offsetLine(s.seg, ts, te, -w / 2, 16)
-                back += offsetLine(s.seg, ts, te, w / 2, 16)
-            tls -= sl
-            tle -= sl
-            if tls <= 0 and tle <= 0:
-                break
-        # sys.stdout.flush()
-        back.reverse()
-        return front + back
     def nearest(self, p):
         mind = 100000000
         minl = None
@@ -488,26 +437,6 @@ class ControlCurve:
         return minl
 
         # internal functions
-    def __segmentsof(self, cp):
-        return [s for s in self.segment if s.ps is cp or s.pe is cp]
-    def __neighborsof(self, seg):
-        return [s for s in self.segment if seg.ps is s.pe or seg.pe is s.ps]
-
-    def __setupCp(self, cp):
-        so = self.__segmentsof(cp)
-        for s in so:
-            if s.type is SegType.Straight:
-                return self.__setupSeg(s)
-            else:
-                s.setup()
-        return so
-    def __setupSeg(self, seg):
-        seg.setup()
-        nb = self.__neighborsof(seg)
-        for s in nb:
-            s.setup()
-        nb.append(seg)
-        return nb
     def fixedSegmentPoints(self, seg):
         # return all points that have to move to leave seg fixed
         cps = set()
@@ -673,15 +602,100 @@ class ControlCurve:
         # print(self.pointAt(0))
 
         return self.segment  # all are affected
-
+    def offsetPolygonAt(self, ls, le, o1, o2 = None):
+        """ constructs an offset polygon of width w along the track from ls to le"""
+        if o2 is None:
+            o2 =  o1/2
+            o1 = -o1/2
+        tls = min(ls, le)
+        tle = max(ls, le)
+        sl = 0
+        front = []
+        back  = []
+        for s in self.segment:
+            sl = s.length()
+            if tls < sl:
+                ts = tls / sl if tls > 0  else 0
+                te = tle / sl if tle < sl else 1
+                front += offsetLine(s.seg, ts, te, o1, 16)
+                back  += offsetLine(s.seg, ts, te, o2, 16)
+            tls -= sl
+            tle -= sl
+            if tls <= 0 and tle <= 0:
+                break
+        back.reverse()
+        return front + back
     def drawSegment(self, seg, canvas, inclText=True, **config):
         # returns a list of the cids of the canvas items or
         # None if segment isn't in the curve
+        def segmentOffsetPoly(seg,width):
+            front = []
+            back  = []
+            shapes = seg.shapeparameters()
+            sl = seg.length()
+            dl = 0
+            o = width/2
+            for j, shape in enumerate(shapes):
+                ep, l, div, k, center = shape
+                n = max(2,min(32,int(abs(3 * 2*k*m.pi)*l)))
+                s = dl/sl
+                e = (dl+l)/sl
+                front += offsetLine(seg,s,e,-o,n)
+                back  += offsetLine(seg,s,e,+o,n)
+                dl += l
+            back.reverse()
+            return front+back
+        def segmentDraw(seg, canvas, cids=None, **kw):
+            if not cids: cids = []
+            poly = segmentOffsetPoly(seg,self.width)
+            cids.append(canvas.create_polygon([(x[0], x[1]) for x in poly], **kw))
+            return cids
+        def segmentText(seg, canvas, cids=None, **kw):
+            if not cids: cids = []
+            shapes = seg.shapeparameters()
+            sl = seg.length()
+            dl = 0
+            for j, shape in enumerate(shapes):
+                ep, l, div, k, center = shape
+                if abs(k) < 1 / 300:
+                    stext = "\n{:.0f}".format(l)
+                else:
+                    stext = "{:.0f} R\n{:.0f}".format(1 / k, l)
+                h = seg.eval(0.5 * (dl+l) / sl)
+                cids.append(canvas.create_text([h[0], h[1]],
+                                               text=stext,
+                                               tags="segment"))
+                dl += l
+            return cids
+        def segmentExtra(self, canvas, cids=None, **kw):
+            if not cids: cids = []
+            # if self.type is SegType.Straight:
+            #     return cids
+            # t1 = biarc.bezier2_dr(1, self.seg.h1)
+            # t2 = biarc.bezier2_dr(0, self.seg.h2)
+            # J = self.seg.joint()
+            
+            # cids.append(canvas.create_line([self.ps.point[0], self.ps.point[1], self.pe.point[0], self.pe.point[1]],
+            #                                tags="segment"))
+            # cids.append(canvas.create_line([J[0], J[1], J[0] + t1[0], J[1] + t1[1]], tags="segment"))
+            
+            # cas = []
+            # nn = 32
+            # cj, kj, aj, lj = self.seg.circleparameters()
+            # for j in range(nn):
+            #     t = biarc.lerp(j / (nn - 1), -1, 1)
+            #     tt = biarc.bc_arclen_t(abs(t), aj if t > 0 else 2 * m.pi - aj)
+            #     p = self.seg.evalJ(tt if t > 0 else -tt)
+            #     cas.append(p)
+            # cids.append(canvas.create_line([(x[0], x[1]) for x in cas], tags="segment"))
+            return cids
+
+
         if seg in self.segment:
-            cids = seg.draw(canvas, **config)
+            cids = segmentDraw(seg,canvas,**config)
             if inclText:
-                seg.drawText(canvas, cids, **config)
-                # seg.drawExtra(canvas,cids,**config)
+                segmentText(seg,canvas, cids, **config)
+                # segmentExtra(seg,canvas,cids,**config)
             return cids
         else:
             return None
@@ -689,19 +703,259 @@ class ControlCurve:
         # returns a map of segments to a list of cids of the canvas items
         seg2cids = {}
         for s in self.segment:
-            seg2cids[s] = s.draw(canvas, **config)
-            if inclText:
-                s.drawText(canvas, seg2cids[s], **config)
-                # s.drawExtra(canvas,seg2cids[s],**config)
+            seg2cids[s] = self.drawSegment(s, canvas, inclText, **config)
         return seg2cids
+    def importTed(self, tedfile):
+        hdr     = ted.ted_data_to_tuple("header", ted.header, tedfile, 0)
+        cps     = ted.ted_data_to_tuple_list("cp", ted.cp, tedfile,
+                                             hdr.cp_offset, hdr.cp_count)
+        banks   = ted.ted_data_to_tuple_list("bank", ted.segment, tedfile,
+                                             hdr.bank_offset, hdr.bank_count)
+        heights = ted.ted_data_to_tuple_list("height", ted.height, tedfile,
+                                             hdr.height_offset, hdr.height_count)
+        checkps = ted.ted_data_to_tuple_list("checkpoints", ted.checkpoint, tedfile,
+                                             hdr.checkpoint_offset, hdr.checkpoint_count)
+        road    = ted.ted_data_to_tuple_list("road", ted.road, tedfile,
+                                             hdr.road_offset, hdr.road_count)
+        deco    = ted.ted_data_to_tuple_list("decoration", ted.decoration, tedfile,
+                                             hdr.decoration_offset, hdr.decoration_count)
+
+        self.width   = hdr.road_width
+        self.scenery = hdr.scenery
+        
+        self.isOpen = True
+        self.point   = []
+        self.segment = []
+        self.road    = []
+        self.deco    = []
+        self.checkpoint = []
+        def set_banking(banking, bank):
+            banking.angle    = bank.banking
+            banking.prev_len = bank.transition_prev_vlen
+            banking.next_len = bank.transition_next_vlen
+
+        def get_segment_heights(heights, bank):
+            sh = [heights[j].height for j in range(bank.total_divisions,
+                                                   bank.total_divisions + bank.divisions)]
+            return sh
+
+        for i, cp in enumerate(cps):
+            prev = cps[i - 1]
+            lx = (cps[i - 1].x - cp.x)
+            ly = (cps[i - 1].y - cp.y)
+            l = m.sqrt(lx * lx + ly * ly)
+            if ted.SegType(cp.segtype) == ted.SegType.Straight:
+                # straight segment
+                p, seg, _ = self.appendPoint(la.coords(cp.x, cp.y), SegType.Straight)
+                if seg:
+                    set_banking(seg.banking[0], banks[i - 1])
+                    hs = get_segment_heights(heights, banks[i - 1])
+                    seg.set_heights([hs, []])
+            # second arc of biarc segment
+            segarc2 = (ted.SegType(cp.segtype) == ted.SegType.Arc2CCW or
+                       ted.SegType(cp.segtype) == ted.SegType.Arc2CW)
+            prevsegarc1 = (ted.SegType(prev.segtype) == ted.SegType.Arc1CCW or
+                           ted.SegType(cp.segtype) == ted.SegType.Arc1CW)
+            segnearly = ted.SegType(cp.segtype) == ted.SegType.NearlyStraight
+            prevsegnearly = ted.SegType(prev.segtype) == ted.SegType.NearlyStraight
+
+            if segarc2 or segnearly and (prevsegarc1 or prevsegnearly):
+                p1    = la.coords(cps[i - 0].x, cps[i - 0].y)
+                joint = la.coords(cps[i - 1].x, cps[i - 1].y)
+                p0    = la.coords(cps[i - 2].x, cps[i - 2].y)
+
+                dx = (cp.x - cp.center_x)
+                dy = (cp.y - cp.center_y)
+
+                if ted.SegType(cp.segtype) == ted.SegType.Arc2CCW:
+                    t = la.unit(la.coords(dy, -dx))
+                if ted.SegType(cp.segtype) == ted.SegType.Arc2CW:
+                    t = la.unit(la.coords(-dy, dx))
+                if ted.SegType(cp.segtype) == ted.SegType.NearlyStraight:
+                    t = la.unit(la.coords(cp.x - prev.x, cp.y - prev.y))
+
+                biarc_r = la.norm(joint - p0) / (la.norm(joint - p0) + la.norm(joint - p1))
+
+                # biarc_r = bezier_circle_parameter(p0,p1,self.cc.point[-1].tangent,joint)
+
+                p, seg, _ = self.appendPoint(la.coords(cp.x, cp.y), SegType.Biarc, biarc_r)
+                p.tangent = t
+
+                set_banking(seg.banking[0], banks[i - 2])
+                set_banking(seg.banking[1], banks[i - 1])
+                hs1 = get_segment_heights(heights, banks[i - 2])
+                hs2 = get_segment_heights(heights, banks[i - 1])
+                seg.set_heights([hs1, hs2])
+
+        # ted file contains first point as last point if track is closed, fix it:
+        if hdr.is_loop:
+            self.segment[-1].pe = self.segment[0].ps
+            self.segment[-1].setup()
+            self.point.pop()  # remove duplicated last point
+            self.isOpen = False
+
+        for s in self.segment:  # quick fix for setup update madness while importing
+            s.heights_need_update = False
+
+        def neighborhood(iterable):
+            iterator = iter(iterable)
+            prev = None
+            current = next(iterator)  # throws StopIteration if empty.
+            for next_item in iterator:
+                yield (prev, current, next_item)
+                prev,current = current,next_item
+            yield (prev, current, None)
+
+        for c in checkps:
+            self.checkpoint.append(c.vpos3d)
+        for r in road:
+            self.road.append(r)
+        for d in deco:
+            self.deco.append(d)
+    def exportTed(self):
+        # convert ted
+        TedCp = ted.ted_data_tuple("cp", ted.cp)
+        TedSeg = ted.ted_data_tuple("segment", ted.segment)
+        segs = []
+        total_l = 0
+        total_div = 0
+        total_heights = []
+        eps = 2 ** -16
+
+        # control points always include first point, first segment is always straight
+        cps = [TedCp(segtype=int(ted.SegType.Straight.value),
+                     x=self.segment[0].ps.point[0],
+                     y=self.segment[0].ps.point[1],
+                     center_x=0,
+                     center_y=0)]
+
+        for i, seg in enumerate(self.segment):
+            if seg.heights_need_update:
+                seg.calc_heights(the_heightmap)
+            for j, sp in enumerate(seg.shapeparameters()):
+                ep, l, div, k, center = sp
+                bk   = seg.banking[j]
+                hgts = seg.heights[j]
+                bdiv = len(hgts)
+
+                if seg.type is SegType.Straight:
+                    segtype = ted.SegType.Straight
+                elif abs(k) < eps:
+                    segtype = ted.SegType.NearlyStraight
+                elif j == 0:
+                    segtype = ted.SegType.Arc1CW if k > 0 else ted.SegType.Arc1CCW
+                elif j == 1:
+                    segtype = ted.SegType.Arc2CW if k > 0 else ted.SegType.Arc2CCW
+
+                cps.append(TedCp(segtype=int(segtype.value),
+                                 x=ep[0],
+                                 y=ep[1],
+                                 center_x=center[0],
+                                 center_y=center[1]))
+                segs.append(TedSeg(banking=bk.angle,
+                                   transition_prev_vlen=bk.prev_len,
+                                   transition_next_vlen=bk.next_len,
+                                   divisions=bdiv,
+                                   total_divisions=total_div,
+                                   vstart=total_l,
+                                   vlen=l))
+                # print("seg",l,div,total_div,l,total_l)
+                total_l   += l
+                total_div += bdiv
+                total_heights.extend(hgts)
+
+        TedHgt = ted.ted_data_tuple("height", ted.height)
+        tedheights = []
+        for h in total_heights:
+            tedheights.append(TedHgt(height=h))
+        # always include first height value as last (TODO: check if valid for open tracks)
+        tedheights.append(tedheights[0])
+
+        eldiff = max(total_heights) - min(total_heights)
+
+        TedCheck = ted.ted_data_tuple("checkpoint", ted.checkpoint)
+        chps = []
+        for cp in self.checkpoint:
+            chps.append(TedCheck(vpos3d = cp))
+
+        # convert road railunits
+        TedRoad = ted.ted_data_tuple("road", ted.road)
+        roads = []  # holds new road elements, can be more or less than elements in self.road
+        for r in self.road:  # all road elements in the imported ted file
+            roads.append(TedRoad(uuid=r.uuid,
+                                 side=r.side,
+                                 vstart3d=r.vstart3d,
+                                 vend3d=r.vend3d))
+
+        # convert decoration railunits
+        TedDeco = ted.ted_data_tuple("deco", ted.decoration)
+        decos = []
+        for d in self.deco:
+            decos.append(TedDeco(uuid=d.uuid,
+                                 side=d.side,
+                                 vstart3d=d.vstart3d,
+                                 vend3d=d.vend3d,
+                                 tracktype=d.tracktype))
+
+        # build new tedfile
+        TedHdr = ted.ted_data_tuple("hdr", ted.header)
+        hdr = TedHdr(id=b"GT6TED\0\0",
+                     version=104,
+                     scenery=self.scenery,
+                     road_width=self.width,
+                     track_width_a=self.width,
+                     track_width_b=self.width,
+                     track_length=total_l,
+                     datetime=int(time.time()),
+                     is_loop=0 if self.isOpen else 1,
+                     home_straight_length=700,
+                     elevation_diff=eldiff,
+                     num_corners=4, # TODO: calc
+                     finish_line=0,
+                     start_line=412.0769348144531, # TODO: from raildef
+                     empty1_offset=0,
+                     empty1_count=0,
+                     empty2_offset=0,
+                     empty2_count=0,
+                     empty3_offset=0,
+                     empty3_count=0)
+
+        tedsz = (ted.ted_data_size(ted.header) +
+                 ted.ted_data_size(ted.cp) * len(cps) +
+                 ted.ted_data_size(ted.segment) * len(segs) +
+                 ted.ted_data_size(ted.height) * len(tedheights) +
+                 ted.ted_data_size(ted.checkpoint) * len(chps) +
+                 ted.ted_data_size(ted.road) * len(roads) +
+                 ted.ted_data_size(ted.decoration) * len(decos))
+
+        tedfile = bytearray(b'\x00' * tedsz)
+
+        hdr = hdr._replace(scenery=self.scenery,
+                           track_length=total_l,
+                           elevation_diff=eldiff)
+        hdrsz = ted.ted_data_size(ted.header)
+
+        # o = ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
+        hdr = hdr._replace(cp_offset=hdrsz, cp_count=len(cps))
+        o = ted.tuple_list_to_ted_data(cps, ted.cp, tedfile, hdr.cp_offset, hdr.cp_count)
+        hdr = hdr._replace(bank_offset=o, bank_count=len(segs))
+        o = ted.tuple_list_to_ted_data(segs, ted.segment, tedfile, hdr.bank_offset, hdr.bank_count)
+        hdr = hdr._replace(height_offset=o, height_count=len(tedheights))
+        o = ted.tuple_list_to_ted_data(tedheights, ted.height, tedfile, hdr.height_offset, hdr.height_count)
+        hdr = hdr._replace(checkpoint_offset=o, checkpoint_count=len(chps))
+        o = ted.tuple_list_to_ted_data(chps, ted.checkpoint, tedfile, hdr.checkpoint_offset, hdr.checkpoint_count)
+        hdr = hdr._replace(road_offset=o, road_count=len(roads))
+        o = ted.tuple_list_to_ted_data(roads, ted.road, tedfile, hdr.road_offset, hdr.road_count)
+        hdr = hdr._replace(decoration_offset=o, decoration_count=len(decos))
+        o = ted.tuple_list_to_ted_data(decos, ted.decoration, tedfile, hdr.decoration_offset, hdr.decoration_count)
+
+        ted.tuple_to_ted_data(hdr, ted.header, tedfile, 0)
+        return tedfile
 
 ###########################################################################
-
-
 def rgb2hex(rgb_tuple):
     """ convert an (R, G, B) tuple to #RRGGBB """
     return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb_tuple)
-
 def hex2rgb(hexstring):
     """ convert #RRGGBB to an (R, G, B) tuple """
     hexstring = hexstring.strip()
@@ -711,7 +965,6 @@ def hex2rgb(hexstring):
     r, g, b = hexstring[:2], hexstring[2:4], hexstring[4:]
     r, g, b = [int(n, 16) for n in (r, g, b)]
     return r / 255, g / 255, b / 255
-
 def rgb_lighten_saturate(rgb, dl,ds):
     hls = colorsys.rgb_to_hls(*rgb)
     hls = (hls[0], hls[1] + dl, hls[2] + ds)
@@ -720,7 +973,6 @@ def hex_lighten_saturate(hexstr, dl, ds):
     hls = colorsys.rgb_to_hls(*hex2rgb(hexstr))
     hls = (hls[0], hls[1] + dl, hls[2] + ds)
     return rgb2hex(colorsys.hls_to_rgb(*hls))
-
 def style_active(style, lighten, saturate, thicken):
     if "fill" in style and style["fill"]:
         style["activefill"] = hex_lighten_saturate(style["fill"], lighten, saturate)
@@ -854,7 +1106,7 @@ class RailManip(SavedFSM):
         self.uuids = None
         self.ru = None
         self.rui = None
-    def switchScene(self,scene):
+    def switchScenery(self,scene):
         if self.scene is not None and self.scene is not scene:
             old_rui,old_rui_inv = raildefs.getRailUnitIndex(self.rr)
             new_rr = raildefs.getRailRoot(scene["rd"])
@@ -868,8 +1120,23 @@ class RailManip(SavedFSM):
 
     def addMoveHandle(self, railitem):
         #print("poly from",railitem.vstart3d,"to",railitem.vend3d)
-        op = self.cc.offsetPolygonAt(railitem.vstart3d,railitem.vend3d,30)
-        cids = [self.canvas.create_polygon([(p[0],p[1]) for p in op], **self.movestyle)]
+
+        unit = self.ru[railitem.uuid]
+        print(railitem.uuid,unit, raildefs.getUnitLength(unit))
+
+        widths = raildefs.getUnitWidths(unit)
+        print(widths)
+        if railitem.side== 0 or railitem.side == 2:
+            print(railitem.side, "l",widths[0], "r",widths[1])
+            opl = self.cc.offsetPolygonAt(railitem.vstart3d,railitem.vend3d,-self.cc.width/2,-widths[0])
+            opr = self.cc.offsetPolygonAt(railitem.vstart3d,railitem.vend3d,+self.cc.width/2,+widths[1])
+        else:
+            print(railitem.side, "l",widths[1], "r",widths[0])
+            opl = self.cc.offsetPolygonAt(railitem.vstart3d,railitem.vend3d,-self.cc.width/2,-widths[1])
+            opr = self.cc.offsetPolygonAt(railitem.vstart3d,railitem.vend3d,+self.cc.width/2,+widths[0])
+            
+        cids = [self.canvas.create_polygon([(p[0],p[1]) for p in opl], **self.movestyle),
+                self.canvas.create_polygon([(p[0],p[1]) for p in opr], **self.movestyle)]
         return cids
     def removeHandles(self):
         self.canvas.delete(self.movetag)
@@ -885,6 +1152,28 @@ class RailManip(SavedFSM):
             self.imap[r] = cids
         self.canvas.tag_lower("rail","segment")
         sys.stdout.flush()
+
+        minslotlen = 50
+        #tex = m.fmod(self.cc.length(),minslotlen)
+        #numslots = int((self.cc.length() - tex)/minslotlen + 2)
+        numslots = int(self.cc.length()/minslotlen + 2)
+        ex = (self.cc.length() - numslots*minslotlen)/numslots
+        slotlen = minslotlen + ex
+
+        
+        try:
+            self.canvas.delete("slots")
+        except tk.TclError:
+            pass
+
+        for i in range(numslots):
+            s = i*slotlen
+            op, ot = self.cc.pointAndTangentAt(s)
+            on = la.perp2ccw(ot)
+            p1 = op + 30*la.unit(on)
+            p2 = op - 30*la.unit(on)
+            self.canvas.create_polygon([(p1[0],p1[1]),(p2[0],p2[1])],outline="black",tags="slots")
+
 
     def findClosest(self, ev):
         cx, cy = self.canvas.canvasxy(ev.x, ev.y)
@@ -1175,6 +1464,25 @@ class CCManip(SavedFSM):
         except tk.TclError:
             pass
 
+        # minslotlen = 50
+        # tex = m.fmod(self.cc.length(),minslotlen)
+        # numslots = int((self.cc.length() - tex)/minslotlen + 2)
+        # ex = (self.cc.length() - numslots*minslotlen)/numslots
+        # slotlen = minslotlen + ex
+        
+        # try:
+        #     self.canvas.delete("slots")
+        # except tk.TclError:
+        #     pass
+
+        # for i in range(numslots):
+        #     s = i*slotlen
+        #     op, ot = self.cc.pointAndTangentAt(s)
+        #     on = la.perp2ccw(ot)
+        #     p1 = op + 30*la.unit(on)
+        #     p2 = op - 30*la.unit(on)
+        #     self.canvas.create_polygon([(p1[0],p1[1]),(p2[0],p2[1])],outline="black",tags="slots")
+
         self.canvas.itemconfigure(self.lengthdisplay,
                                   text="Length: {:.2f}m".format(self.cc.length()))
     def addJointHandles(self, except_seg=None):
@@ -1389,7 +1697,11 @@ class CCManip(SavedFSM):
         self.info.mod = True
 
         xform = la.translate(self.info.dx, self.info.dy)
-        total_aff = self.cc.transformPoints(self.info.sel, xform)
+        aff = self.cc.transformPoints(self.info.sel, xform)
+        #cids = []
+        #for s in xformable:
+        #    cids.extend(self.imap[s])
+        #self.canvas.apply_xform(cids, xform)
 
         for cp in self.info.sel:
             cids = self.imap[cp]
@@ -1397,12 +1709,12 @@ class CCManip(SavedFSM):
                 self.canvas.move(cid, self.info.dx, self.info.dy)
 
         if self.info.seg:
-            total_aff.remove(self.info.seg)
+            aff.remove(self.info.seg)
             cids = self.imap[self.info.seg]
             for cid in cids:
                 self.canvas.move(cid, self.info.dx, self.info.dy)
 
-        self.redrawSegments(total_aff)
+        self.redrawSegments(aff)
     def onMoveEnd(self, ev):
         self.info = None
     def onJointMoveStart(self, ev):
@@ -1449,6 +1761,10 @@ class CCManip(SavedFSM):
         self.info = None
     def applySelXForm(self, xform):
         aff = self.cc.transformPoints(self.selection, xform)
+        #cids = []
+        #for s in xformable:
+        #    cids.extend(self.imap[s])
+        #self.canvas.apply_xform(cids, xform)
         self.addHandles()
         self.redrawSegments(aff)
         self.redrawSelection()
@@ -1530,7 +1846,6 @@ class CCManip(SavedFSM):
         self.selection.clear()  # clear selection
         self.redrawSegments()
         self.addHandles()
-
 ###########################################################################
 class BankingManip(tk.Frame,SavedFSM):
     def __init__(self, app, cc, master=None):
@@ -1567,6 +1882,8 @@ class BankingManip(tk.Frame,SavedFSM):
             # (State, tag or None, event (None is any event)) -> (State, callback)
             (s.Idle, None, "<Motion>")           : (s.Idle, self.onMouseMotion),
             (s.Idle, None, "<MouseWheel>")       : (s.Idle, self.onWheel),
+            (s.Idle, None, "<Button-4>")         : (s.Idle, self.onWheel),
+            (s.Idle, None, "<Button-5>")         : (s.Idle, self.onWheel),
             (s.Idle, None, "<Configure>")        : (s.Idle, self.onConfigure),
 
             (s.Idle, "bank", "<ButtonPress-1>")  : (s.Bank, self.onMoveStart),
@@ -1585,7 +1902,10 @@ class BankingManip(tk.Frame,SavedFSM):
     def onWheel(self, ev):
         cx, cy = self.canvas.canvasxy(ev.x, ev.y)
         sf = 1.1
-        if ev.delta < 0: sf = 1 / sf
+        if not (ev.delta == 0):  # Wheel event
+            if ev.delta < 0: sf = 1 / sf
+        else:
+            if ev.num == 5: sf = 1 / sf
         # scale all objects on canvas
         self.canvas.zoom(cx, cy, sf)
     def onMouseMotion(self, ev):
@@ -1707,7 +2027,6 @@ class BankingManip(tk.Frame,SavedFSM):
         sl, sa, el, ea = self.canvas.coords(cid)
         self.canvas.move(cid, 0, a - sa)
         self.drawTransition(True)
-
 ###########################################################################
 class App(tk.Frame):
     def __init__(self, master=None):
@@ -1745,298 +2064,26 @@ class App(tk.Frame):
         try:
             with open(path, mode='rb') as file:
                 tedfile = file.read()
-                self.importTed(tedfile)
         except FileNotFoundError:
             print("file not found!")
             return
-    def importTed(self, tedfile):
-        self.tedfile = bytearray(tedfile)
-        self.hdr = ted.ted_data_to_tuple("header", ted.header, tedfile, 0)
-        self.cps = ted.ted_data_to_tuple_list("cp", ted.cp, tedfile, self.hdr.cp_offset, self.hdr.cp_count)
-        self.banks = ted.ted_data_to_tuple_list("bank", ted.segment, tedfile, self.hdr.bank_offset, self.hdr.bank_count)
-        self.heights = ted.ted_data_to_tuple_list("height", ted.height, tedfile, self.hdr.height_offset,
-                                                  self.hdr.height_count)
-        self.checkps = ted.ted_data_to_tuple_list("checkpoints", ted.checkpoint, tedfile, self.hdr.checkpoint_offset,
-                                                  self.hdr.checkpoint_count)
-        self.road = ted.ted_data_to_tuple_list("road", ted.road, tedfile, self.hdr.road_offset, self.hdr.road_count)
-        self.deco = ted.ted_data_to_tuple_list("decoration", ted.decoration, tedfile, self.hdr.decoration_offset,
-                                               self.hdr.decoration_count)
+        self.importTed(tedfile)
 
-        old_bbox = self.canvas.bbox("segment")
-
-        self.cc = ControlCurve()
-
-        def set_banking(banking, bank):
-            banking.angle = bank.banking
-            banking.prev_len = bank.transition_prev_vlen
-            banking.next_len = bank.transition_next_vlen
-
-        def get_segment_heights(heights, bank):
-            sh = [heights[j].height for j in range(bank.total_divisions,
-                                                   bank.total_divisions + bank.divisions)]
-            # print(len(sh),bank.divisions)
-            # sys.stdout.flush()
-            return sh
-
-        width = self.hdr.road_width
-
-        for i, cp in enumerate(self.cps):
-            prev = self.cps[i - 1]
-            lx = (self.cps[i - 1].x - cp.x)
-            ly = (self.cps[i - 1].y - cp.y)
-            l = m.sqrt(lx * lx + ly * ly)
-
-            # print(i,ted.SegType(cp.segtype),cp.x,cp.y,cp.center_x,cp.center_y, l)
-            # sys.stdout.flush()
-
-            if ted.SegType(cp.segtype) == ted.SegType.Straight:
-                # straight segment
-                p, seg, _ = self.cc.appendPoint(la.coords(cp.x, cp.y), SegType.Straight, width)
-                if seg:
-                    set_banking(seg.banking[0], self.banks[i - 1])
-                    hs = get_segment_heights(self.heights, self.banks[i - 1])
-                    seg.set_heights([hs, []])
-            # second arc of biarc segment
-            segarc2 = (ted.SegType(cp.segtype) == ted.SegType.Arc2CCW or
-                       ted.SegType(cp.segtype) == ted.SegType.Arc2CW)
-            prevsegarc1 = (ted.SegType(prev.segtype) == ted.SegType.Arc1CCW or
-                           ted.SegType(cp.segtype) == ted.SegType.Arc1CW)
-            segnearly = ted.SegType(cp.segtype) == ted.SegType.NearlyStraight
-            prevsegnearly = ted.SegType(prev.segtype) == ted.SegType.NearlyStraight
-
-            if segarc2 or segnearly and (prevsegarc1 or prevsegnearly):
-                p1 = la.coords(self.cps[i - 0].x, self.cps[i - 0].y)
-                joint = la.coords(self.cps[i - 1].x, self.cps[i - 1].y)
-                p0 = la.coords(self.cps[i - 2].x, self.cps[i - 2].y)
-
-                dx = (cp.x - cp.center_x)
-                dy = (cp.y - cp.center_y)
-
-                if ted.SegType(cp.segtype) == ted.SegType.Arc2CCW:
-                    t = la.unit(la.coords(dy, -dx))
-                if ted.SegType(cp.segtype) == ted.SegType.Arc2CW:
-                    t = la.unit(la.coords(-dy, dx))
-                if ted.SegType(cp.segtype) == ted.SegType.NearlyStraight:
-                    t = la.unit(la.coords(cp.x - prev.x, cp.y - prev.y))
-
-                biarc_r = la.norm(joint - p0) / (la.norm(joint - p0) + la.norm(joint - p1))
-
-                # biarc_r = bezier_circle_parameter(p0,p1,self.cc.point[-1].tangent,joint)
-
-                p, seg, _ = self.cc.appendPoint(la.coords(cp.x, cp.y), SegType.Biarc, width, biarc_r)
-                p.tangent = t
-
-                set_banking(seg.banking[0], self.banks[i - 2])
-                set_banking(seg.banking[1], self.banks[i - 1])
-                hs1 = get_segment_heights(self.heights, self.banks[i - 2])
-                hs2 = get_segment_heights(self.heights, self.banks[i - 1])
-                seg.set_heights([hs1, hs2])
-
-        # ted file contains first point as last point if track is closed, fix it:
-        if self.hdr.is_loop and self.cc.isOpen:
-            self.cc.segment[-1].pe = self.cc.segment[0].ps
-            self.cc.segment[-1].setup()
-            self.cc.point.pop()  # remove duplicated last point
-            self.cc.isOpen = False
-
-        # switch to correct scenery
-        for name, data in self.scenery.items():
-            if data["id"] == self.hdr.scenery:
+        for name, data in the_scenery.items():
+            if data["id"] == self.cc.scenery:
                 self.switchScenery(name)
 
-        for s in self.cc.segment:  # quick fix for setup update madness while importing
-            s.heights_need_update = False
-
-        def neighborhood(iterable):
-            iterator = iter(iterable)
-            prev = None
-            current = next(iterator)  # throws StopIteration if empty.
-            for next_item in iterator:
-                yield (prev, current, next_item)
-                prev,current = current,next_item
-            yield (prev, current, None)
-
-        for r in self.road:
-            print(r)
-            self.cc.road.append(r)
-            print(self.cc.road[-1])
-        deco_start, deco_length = 0,0
-        for d in self.deco:
-            print(d)
-            self.cc.deco.append(d)
-            print(self.cc.deco[-1])
-
-        sys.stdout.flush()
         # rebuild
-        self.ccmanip.cc   = self.cc
-        self.railmanip.cc = self.cc
-        self.ccmanip.redrawSegments()
-        self.ccmanip.addHandles()
+        self.railmanip.restore(self.cc)
+        self.ccmanip.restore(self.cc)
+        #self.ccmanip.redrawSegments()
+        #self.ccmanip.addHandles()
 
         self.recenterTrack()
-
+    def importTed(self,tedfile):
+        return self.cc.importTed(tedfile)
     def exportTed(self):
-        # convert ted
-        TedCp = ted.ted_data_tuple("cp", ted.cp)
-        TedSeg = ted.ted_data_tuple("segment", ted.segment)
-        segs = []
-        total_l = 0
-        total_div = 0
-        total_heights = []
-        eps = 2 ** -16
-
-        # control points always include first point, first segment is always straight
-        cps = [TedCp(segtype=int(ted.SegType.Straight.value),
-                     x=self.cc.segment[0].ps.point[0],
-                     y=self.cc.segment[0].ps.point[1],
-                     center_x=0,
-                     center_y=0)]
-
-        for i, seg in enumerate(self.cc.segment):
-            if seg.heights_need_update:
-                seg.calc_heights(self.hm, self.scene["ex"])
-            for j, sp in enumerate(seg.shapeparameters()):
-                ep, l, div, k, center = sp
-                bk = seg.banking[j]
-                hgts = seg.heights[j]
-                bdiv = len(hgts)
-
-                if seg.type is SegType.Straight:
-                    segtype = ted.SegType.Straight
-                elif abs(k) < eps:
-                    segtype = ted.SegType.NearlyStraight
-                elif j == 0:
-                    segtype = ted.SegType.Arc1CW if k > 0 else ted.SegType.Arc1CCW
-                elif j == 1:
-                    segtype = ted.SegType.Arc2CW if k > 0 else ted.SegType.Arc2CCW
-
-                cps.append(TedCp(segtype=int(segtype.value),
-                                 x=ep[0],
-                                 y=ep[1],
-                                 center_x=center[0],
-                                 center_y=center[1]))
-                segs.append(TedSeg(banking=bk.angle,
-                                   transition_prev_vlen=bk.prev_len,
-                                   transition_next_vlen=bk.next_len,
-                                   divisions=bdiv,
-                                   total_divisions=total_div,
-                                   vstart=total_l,
-                                   vlen=l))
-                # print("seg",l,div,total_div,l,total_l)
-                total_l += l
-                total_div += bdiv
-                total_heights.extend(hgts)
-
-        TedHgt = ted.ted_data_tuple("height", ted.height)
-        tedheights = []
-        for h in total_heights:
-            tedheights.append(TedHgt(height=h))
-        # always include first height value as last (TODO: check if valid for open tracks)
-        tedheights.append(tedheights[0])
-
-        eldiff = max(total_heights) - min(total_heights)
-
-        # total_l is the new track length, self.hdr is the header of the imported ted file and contains
-        # the old track_length.
-        # sf is the linear scale factor for the lengths of road and decoration elements and others
-        try:
-            sf = total_l / self.hdr.track_length
-        except AttributeError:
-            sf = 1.0
-            self.checkps = []
-            self.road = []
-            self.deco = []
-        TedCheck = ted.ted_data_tuple("checkpoint", ted.checkpoint)
-        chps = []
-        for cp in self.checkps:
-            chps.append(TedCheck(vpos3d=cp.vpos3d * sf))
-
-        railroot = raildefs.getRailRoot("rd/andalusia.raildef")
-        # rework this function to deliver useful information
-        types, uuids, content = raildefs.getRailDict(railroot)
-
-        # convert road railunits
-        TedRoad = ted.ted_data_tuple("road", ted.road)
-        roads = []  # holds new road elements, can be more or less than elements in self.road
-        for r in self.road:  # all road elements in the imported ted file
-            # do something useful with above data while converting the roads
-            vs = r.vstart3d * sf
-            ve = r.vend3d * sf
-            roads.append(TedRoad(uuid=r.uuid, flag=r.flag, vstart3d=vs, vend3d=ve))
-
-        # convert decoration railunits
-        TedDeco = ted.ted_data_tuple("deco", ted.decoration)
-        decos = []
-        for d in self.deco:
-            vl = d.vend3d - d.vstart3d
-            vm = (d.vstart3d + d.vend3d) / 2  # scale midpoint
-            vms = vm * sf
-            vs = vms - vl / 2
-            ve = vms + vl / 2
-            decos.append(TedDeco(uuid=d.uuid, railtype=d.railtype, vstart3d=vs, vend3d=ve, tracktype=d.tracktype))
-
-        # build new tedfile
-        hdr = None
-        try:
-            hdr = deepcopy(self.hdr)
-        except AttributeError:
-            import time
-            TedHdr = ted.ted_data_tuple("hdr", ted.header)
-            self.hdr = TedHdr(id=b"GT6TED\0\0",
-                              version=104,
-                              scenery=self.scene["id"],
-                              road_width=8,
-                              track_width_a=8,
-                              track_width_b=12,
-                              track_length=total_l,
-                              datetime=int(time.time()),
-                              is_loop=0 if self.cc.isOpen else 1,
-                              home_straight_length=700,
-                              elevation_diff=eldiff,
-                              num_corners=4,
-                              finish_line=0,
-                              start_line=412,
-                              empty1_offset=0,
-                              empty1_count=0,
-                              empty2_offset=0,
-                              empty2_count=0,
-                              empty3_offset=0,
-                              empty3_count=0)
-            print(self.hdr)
-            hdr = deepcopy(self.hdr)
-
-        tedsz = (ted.ted_data_size(ted.header) +
-                 ted.ted_data_size(ted.cp) * len(cps) +
-                 ted.ted_data_size(ted.segment) * len(segs) +
-                 ted.ted_data_size(ted.height) * len(tedheights) +
-                 ted.ted_data_size(ted.checkpoint) * len(chps) +
-                 ted.ted_data_size(ted.road) * len(roads) +
-                 ted.ted_data_size(ted.decoration) * len(decos))
-
-        self.tedfile = bytearray(b'\x00' * tedsz)
-
-        hdr = hdr._replace(scenery=self.scene["id"], track_length=total_l, elevation_diff=eldiff)
-        hdrsz = ted.ted_data_size(ted.header)
-
-        # o = ted.tuple_to_ted_data(hdr,ted.header,self.tedfile,0)
-        hdr = hdr._replace(cp_offset=hdrsz, cp_count=len(cps))
-        o = ted.tuple_list_to_ted_data(cps, ted.cp, self.tedfile, hdr.cp_offset, hdr.cp_count)
-        hdr = hdr._replace(bank_offset=o, bank_count=len(segs))
-        o = ted.tuple_list_to_ted_data(segs, ted.segment, self.tedfile, hdr.bank_offset, hdr.bank_count)
-        hdr = hdr._replace(height_offset=o, height_count=len(tedheights))
-        o = ted.tuple_list_to_ted_data(tedheights, ted.height, self.tedfile, hdr.height_offset, hdr.height_count)
-        hdr = hdr._replace(checkpoint_offset=o, checkpoint_count=len(chps))
-        o = ted.tuple_list_to_ted_data(chps, ted.checkpoint, self.tedfile, hdr.checkpoint_offset, hdr.checkpoint_count)
-        hdr = hdr._replace(road_offset=o, road_count=len(roads))
-        o = ted.tuple_list_to_ted_data(roads, ted.road, self.tedfile, hdr.road_offset, hdr.road_count)
-        hdr = hdr._replace(decoration_offset=o, decoration_count=len(decos))
-        o = ted.tuple_list_to_ted_data(decos, ted.decoration, self.tedfile, hdr.decoration_offset, hdr.decoration_count)
-
-        print(hdr)
-        sys.stdout.flush()
-
-        ted.tuple_to_ted_data(hdr, ted.header, self.tedfile, 0)
-        return self.tedfile
+        return self.cc.exportTed()
     def saveTedToFile(self, teddata):
         # write to disk
         path = self.askSaveFileName()
@@ -2184,39 +2231,20 @@ class App(tk.Frame):
         # sys.stdout.flush()
 
     def switchScenery(self, name):
+        global the_heightmap
         print("switch scenery", name)
-        self.scene = self.scenery[name]
-        print("switch scenery", self.scene)
 
+        self.scene = the_scenery[name]
+
+        the_heightmap = Heightmap(self.scene["npz"],self.scene["ex"])
+
+        self.cc.scenery = self.scene["id"]
+        
         self.drawContours(self.scene["ct"])
-        self.hm = np.load(self.scene["npz"])
-        if hasattr(self,"railmanip"):
-            self.railmanip.switchScene(self.scene)
+        #if hasattr(self,"railmanip"):
+        #    self.railmanip.switchScenery(self.scene)
 
     def setup(self):
-        self.scenery = {
-            "Andalusia"   : {"id": 3,
-                             "ct": "hm/andalusia-contours.npz",
-                             "npz": "hm/andalusia.npz",
-                             "ex": 3499.99975586,
-                             "rd": "rd/andalusia.raildef"},
-            "Eifel"       : {"id": 2,
-                             "ct": "hm/eiffel-contours.npz",
-                             "npz": "hm/eiffel.npz",
-                             "ex": 9600.0,
-                             "rd": "rd/eifel.raildef"},
-            "Eifel Flat"  : {"id": 5,
-                             "ct": "hm/eiffel-flat-contours.npz",
-                             "npz": "hm/eiffel-flat.npz",
-                             "ex": 9600.0,
-                             "rd": "rd/eifel-flat.raildef"},
-            "Death Valley": {"id": 1,
-                             "ct": "hm/death-valley-contours.npz",
-                             "npz": "hm/death-valley.npz",
-                             "ex": 3592.67358398,
-                             "rd": "rd/death-valley.raildef"},
-        }
-        self.scenery = collections.OrderedDict(sorted(self.scenery.items()))
 
         # create a toplevel menu
         self.menubar = tk.Menu(self)
@@ -2240,7 +2268,7 @@ class App(tk.Frame):
         self.menubar.add_cascade(label="Help", menu=helpmenu)
 
         scenerymenu = tk.Menu(self.menubar, tearoff=0)
-        for name, data in self.scenery.items():
+        for name, data in the_scenery.items():
             print("add scenery menu", name)
             scenerymenu.add_command(label=name, command=lambda s=self, n=name: s.switchScenery(n))
         self.menubar.add_cascade(label="Scenery", menu=scenerymenu)
@@ -2275,8 +2303,11 @@ class App(tk.Frame):
         self.canvas.bind("<Configure>", self.onConfigure)
         self.canvas.focus_set()
         self.drawCoordGrid()
+
+        self.road_width = 8
+        self.cc = ControlCurve(self.road_width)
+
         self.switchScenery("Andalusia")
-        # self.drawContours("hm/andalusia-contours.npz")
 
         self.img = None
         self.simg = None
@@ -2296,8 +2327,6 @@ class App(tk.Frame):
 
         self.dragging = False
 
-        self.cc = ControlCurve()
-
         # initial simple track
         self.cc.appendPoint(la.coords(100, 200))
         self.cc.appendPoint(la.coords(100, 300))
@@ -2307,25 +2336,48 @@ class App(tk.Frame):
         self.cc.appendPoint(la.coords(600, 200), SegType.Biarc)
         self.cc.appendPoint(la.coords(400, 300))
         self.cc.toggleOpen()
-
+        
         self.ccmanip = CCManip(self.cc, self.canvas)
+        self.ccmanip.stop()
         self.railmanip = RailManip(self.cc, self.canvas)
+        self.railmanip.switchScenery(self.scene)
         self.railmanip.stop()
-        self.railmanip.switchScene(self.scene)
         self.ccmanip.start()
 
+
+    def onToggleManip(self, ev):
+        if self.ccmanip.isStopped():
+            self.railmanip.stop()
+            self.railmanip.removeHandles()
+            self.ccmanip.restore(self.railmanip.save())
+            self.ccmanip.start()
+        else:
+            self.ccmanip.stop()
+            self.ccmanip.removeHandles()
+            self.railmanip.restore(self.ccmanip.save())
+            self.railmanip.start()
+    def restoreManip(self, cc):
+        if self.ccmanip.isStopped():
+            self.railmanip.restore(cc)
+        else:
+            self.ccmanip.restore(cc)
     def onBankingEdit(self, ev):
         if not self.bankwindow:
             self.bankwindow = tk.Toplevel(self.master)
             self.bankmanip = BankingManip(self, self.cc, self.bankwindow)
             self.bankwindow.protocol("WM_DELETE_WINDOW", self.onBankingClose)
             self.ccmanip.stop()
-            self.ccmanip.removeHandles()
             self.railmanip.stop()
+            self.ccmanip.removeHandles()
             self.railmanip.removeHandles()
+            if self.ccmanip.isStopped():
+                self.bankmanip.restore(self.railmanip.save())
+            else:
+                self.bankmanip.restore(self.ccmanip.save())
         else:
             self.onBankingClose()
     def onBankingClose(self):
+        self.ccmanip.restore(self.bankmanip.save())
         self.bankmanip = None
         self.bankwindow.destroy()
         self.bankwindow = None
@@ -2342,9 +2394,9 @@ class App(tk.Frame):
             self.eleveditor._load_ted(trackobj)
             self.elevwindow.protocol("WM_DELETE_WINDOW", self.onElevationClose)
             self.ccmanip.stop()
-            self.ccmanip.removeHandles()
+            #self.ccmanip.removeHandles()
             self.railmanip.stop()
-            self.railmanip.removeHandles()
+            #self.railmanip.removeHandles()
         else:
             self.onElevationClose()
     def onElevationClose(self):
@@ -2357,6 +2409,7 @@ class App(tk.Frame):
         self.elevwindow.destroy()
         self.elevwindow = None
         self.clearTrackIndicator()
+        self.ccmanip.restore(self.cc)
         self.ccmanip.addHandles()
         self.ccmanip.start()
 
@@ -2397,17 +2450,6 @@ class App(tk.Frame):
 
         sys.stdout.flush()
 
-    def onToggleManip(self, ev):
-        if self.ccmanip.isStopped():
-            self.railmanip.stop()
-            self.railmanip.removeHandles()
-            self.ccmanip.addHandles()
-            self.ccmanip.start()
-        else:
-            self.ccmanip.stop()
-            self.ccmanip.removeHandles()
-            self.railmanip.addHandles()
-            self.railmanip.start()
 
     def onDragStart(self, ev):
         self.canvas.focus_set()
