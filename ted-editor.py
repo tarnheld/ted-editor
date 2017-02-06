@@ -2516,6 +2516,7 @@ class App(tk.Frame):
         self.imgcid = self.canvas.create_image(0, 0, image=self.pimg, anchor=tk.NW, tag="image")
         self.imgbbox = (0, 0) + self.img.size
         self.canvas.tag_lower("image", "segment")
+        self.adjustImg()
     def adjustImg(self):
         if self.img:
             xf = self.canvas.xform()
