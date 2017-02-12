@@ -1120,9 +1120,12 @@ class RailManip(SavedFSM):
 
     def addMoveHandle(self, railitem):
         #print("poly from",railitem.vstart3d,"to",railitem.vend3d)
-
-        unit = self.ru[railitem.uuid]
-        print(railitem.uuid,unit, raildefs.getUnitLength(unit))
+        try:
+            unit = self.ru[railitem.uuid]
+        except KeyError:
+            return []
+        
+        #print(railitem.uuid,unit, raildefs.getUnitLength(unit))
 
         widths = raildefs.getUnitWidths(unit)
         print(widths)
